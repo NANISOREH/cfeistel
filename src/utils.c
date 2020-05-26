@@ -33,14 +33,20 @@ void print_to_file(unsigned char * out, char * filename)
 {
 	FILE *write_ptr;
 	write_ptr = fopen(filename,"w");  
-	fwrite(out,sizeof(out),2,write_ptr); 
+	fwrite(out,strlen(out),1,write_ptr); 
 	fclose(write_ptr);
 }
 
-void read_from_file(unsigned char * buffer, char * filename)
+int read_from_file(unsigned char * buffer, char * filename)
 {
 	FILE *ptr;
 	ptr = fopen(filename,"r");  
-	fread(buffer,sizeof(buffer),2,ptr); 
-	fclose(ptr);
+
+	if (ptr != NULL)
+	{
+		fread(buffer,sizeof(buffer),1000,ptr); 
+		fclose(ptr);
+	}
+	else
+		return -1;
 }
