@@ -9,6 +9,6 @@ As of now, it operates on a single block of input data. If data and/or key are e
 
 Command synopsis:
 
-./cfeistel [-k key][-in infile][-out outfile]
+`./cfeistel [-k key][-in infile][-out outfile]`
 
 If not specified, all three parameters have a default fallback value.
