@@ -9,7 +9,7 @@ typedef struct block {
     unsigned char round_key [KEYSIZE];
 }block;
 
-int feistel_round(unsigned char * left, unsigned char * right, unsigned char * key);
 void f(unsigned char * right, unsigned char * key); 
 unsigned char * feistel_block(block b);
 unsigned char * feistel(unsigned char * data, unsigned char * key);
+unsigned char * operate_ecb_mode(block * b, int bnum);
