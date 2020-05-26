@@ -57,15 +57,17 @@ int main(int argc, char * argv[])
 		}
 	}
 
-	data = malloc (1000 * sizeof(char));
+	data = calloc (100000, sizeof(char));
 	if (read_from_file(data, infile) == -1)
 	{
 		printf("\nInput file not found!");
 		return -1;
 	}
+	free(infile);
 	data = realloc(data, strlen(data) * sizeof(char));
 
 	ciphertext = feistel(data, key);
+	free(data);
 	print_to_file(ciphertext, outfile);
 
 	return 0;

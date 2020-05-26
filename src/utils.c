@@ -32,7 +32,7 @@ void print_byte(char c)
 void print_to_file(unsigned char * out, char * filename)
 {
 	FILE *write_ptr;
-	write_ptr = fopen(filename,"w");  
+	write_ptr = fopen(filename,"wb");  
 	fwrite(out,strlen(out),1,write_ptr); 
 	fclose(write_ptr);
 }
@@ -40,11 +40,13 @@ void print_to_file(unsigned char * out, char * filename)
 int read_from_file(unsigned char * buffer, char * filename)
 {
 	FILE *ptr;
-	ptr = fopen(filename,"r");  
+	ptr = fopen(filename,"rb");
+	int length;  
 
 	if (ptr != NULL)
 	{
-		fread(buffer,sizeof(buffer),1000,ptr); 
+		length = fread(buffer,sizeof(char),100000,ptr); 
+		buffer[length++] = '\0';
 		fclose(ptr);
 	}
 	else

@@ -10,6 +10,6 @@ typedef struct block {
 }block;
 
 void f(unsigned char * right, unsigned char * key); 
-unsigned char * feistel_block(block b);
+void feistel_block(unsigned char * out, block b);
 unsigned char * feistel(unsigned char * data, unsigned char * key);
 unsigned char * operate_ecb_mode(block * b, int bnum);
