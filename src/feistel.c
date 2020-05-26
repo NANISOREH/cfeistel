@@ -15,9 +15,9 @@ unsigned char * feistel(unsigned char * data, unsigned char * key)
 	//allocating space for the blocks. 
 	block * b;
 	if (remainder == 0)		//data size is multiple of the blocksize
-		b = malloc((strlen(data) / BLOCKSIZE) * sizeof(block));		
+		b = calloc((strlen(data) / BLOCKSIZE), sizeof(block));		
 	else					//data size is not multiple of the blocksize
-		b = malloc((strlen(data) / BLOCKSIZE + 1) * sizeof(block));	
+		b = calloc((strlen(data) / BLOCKSIZE + 1), sizeof(block));	
 
 	while (i < strlen(data))
     {
@@ -70,27 +70,28 @@ unsigned char * operate_ecb_mode(block * b, int bnum)
 	unsigned char * ciphertext;
 	unsigned char * done_block;
 	int bcount=0;
-	done_block = malloc(BLOCKSIZE);
-	ciphertext = malloc(BLOCKSIZE * bnum);
+	done_block = calloc(BLOCKSIZE, sizeof(unsigned char));
+	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 
 	//done_block = feistel_block(b[0]);
 	for (int i=0; i<BLOCKSIZE * bnum; i++)
 	{
 		if (i % BLOCKSIZE == 0 && bcount < bnum)
 		{
-			done_block = feistel_block(b[bcount]);
+			feistel_block(done_block, b[bcount]);
 			bcount++;
 		}
 
 		ciphertext[i] = done_block[i % BLOCKSIZE];
 	}
 
+	free(done_block);
 	return ciphertext;
 }
 
 
 //execution of the cipher for a single block
-unsigned char * feistel_block(block b) 
+void feistel_block(unsigned char * out, block b) 
 {
 	//buffer variable to temporarily store the left part of the block during the round execution
 	unsigned char templeft[BLOCKSIZE/2];
@@ -111,15 +112,11 @@ unsigned char * feistel_block(block b)
 	strncpy(b.right, templeft, BLOCKSIZE/2);
 
 	//merging left and right part into an array to return the result of the execution
-	unsigned char * out;
-	out = malloc(BLOCKSIZE);
 	for (int i=0; i<BLOCKSIZE/2; i++)
 	{
 		out[i] = b.left[i];
 		out[i+8] = b.right[i];
 	}
-
-	return out;
 }
 
 //placeholder substitution box
