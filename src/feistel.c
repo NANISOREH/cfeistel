@@ -15,7 +15,7 @@ typedef struct block {
     unsigned char round_key [KEYSIZE];
 }block; 
 
-int feistel(unsigned char * data, unsigned char * key) 
+unsigned char * feistel(unsigned char * data, unsigned char * key) 
 {
 	block b;
 	for (int i=0; i<BLOCKSIZE/2; i++)
@@ -24,8 +24,6 @@ int feistel(unsigned char * data, unsigned char * key)
 		b.right[i] = data[i+8];
 	}
 	strncpy(b.round_key, key, KEYSIZE);
-
-	print_to_file(b.left, b.right);
 
 	for (int i=0; i<NROUND; i++)
 	{
@@ -38,7 +36,15 @@ int feistel(unsigned char * data, unsigned char * key)
 	strncpy(b.left, b.right, KEYSIZE);
 	strncpy(b.right, templeft, KEYSIZE);
 
-	print_to_file(b.left, b.right);
+	unsigned char * out;
+	out = malloc(BLOCKSIZE);
+	for (int i=0; i<BLOCKSIZE/2; i++)
+	{
+		out[i] = b.left[i];
+		out[i+8] = b.right[i];
+	}
+
+	return out;
 }
 
 int feistel_round(unsigned char * left, unsigned char * right, unsigned char * key)
