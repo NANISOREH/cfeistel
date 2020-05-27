@@ -15,9 +15,9 @@ unsigned char * feistel(unsigned char * data, unsigned char * key)
 	//allocating space for the blocks. 
 	block * b;
 	if (remainder == 0)		//data size is multiple of the blocksize
-		b = calloc((strlen(data) / BLOCKSIZE), sizeof(block));		
+		b = (block*)calloc((strlen(data) * sizeof(char) / BLOCKSIZE), sizeof(block));		
 	else					//data size is not multiple of the blocksize
-		b = calloc((strlen(data) / BLOCKSIZE + 1), sizeof(block));	
+		b = (block*)calloc((strlen(data) * sizeof(char) / BLOCKSIZE) + 1, sizeof(block));	
 
 	while (i < strlen(data))
     {
@@ -38,14 +38,14 @@ unsigned char * feistel(unsigned char * data, unsigned char * key)
 			strncpy(b[bcount].round_key, key, KEYSIZE);
 			bcount++;
 
-			if (bcount>strlen(data)/BLOCKSIZE)
+			if (bcount==strlen(data)/BLOCKSIZE)
 				break;
         }
     }
 
     if (remainder>0)	//forming the last 0-padded block, if there's leftover data
     {
-    	for (int z=0; z<BLOCKSIZE; z++)
+    	for (int z=0; z<BLOCKSIZE; z++)		
     	{
     		if (z < remainder)
     			buffer[z] = data[(bcount * BLOCKSIZE) + z];
@@ -65,18 +65,18 @@ unsigned char * feistel(unsigned char * data, unsigned char * key)
     return operate_ecb_mode(b, bcount);
 }
 
+//executes the cipher in ECB mode; takes a block array and the number of blocks, returns processed data
 unsigned char * operate_ecb_mode(block * b, int bnum)
 {
 	unsigned char * ciphertext;
-	unsigned char * done_block;
+	unsigned char done_block[BLOCKSIZE];
 	int bcount=0;
-	done_block = calloc(BLOCKSIZE, sizeof(unsigned char));
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 
-	//done_block = feistel_block(b[0]);
-	for (int i=0; i<BLOCKSIZE * bnum; i++)
+	//launching the feistel algorithm on every block, storing the result in ciphertext
+	for (int i=0; i<BLOCKSIZE * bnum; i++) 
 	{
-		if (i % BLOCKSIZE == 0 && bcount < bnum)
+		if (i % BLOCKSIZE == 0 && bcount < bnum) 
 		{
 			feistel_block(done_block, b[bcount]);
 			bcount++;
@@ -85,7 +85,6 @@ unsigned char * operate_ecb_mode(block * b, int bnum)
 		ciphertext[i] = done_block[i % BLOCKSIZE];
 	}
 
-	free(done_block);
 	return ciphertext;
 }
 
@@ -124,9 +123,12 @@ void f(unsigned char * right, unsigned char * key)
 {
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{
-		if (i % 2 == 0)
-			right[i] = right[i] + key[i];
-		else
-			right[i] = right[i] - key[i];
+		right[i] = right[i] ^ key[i];
+	}
+
+	for (int i = 0; i<BLOCKSIZE/2; i++)
+	{
+		right[i] = (right[i] | 9) % 255;
+		right[i] = (right[i] | 10) % 255;
 	}
 }

@@ -1,8 +1,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdlib.h"
-#define BLOCKSIZE 16
-#define KEYSIZE 8
+#include "feistel.h"
 
 int char_xor(unsigned char * result, unsigned char * first, unsigned char * second)
 {
@@ -29,11 +28,16 @@ void print_byte(char c)
     putchar('\n');
 }
 
+void print_block(block b)
+{
+
+}
+
 void print_to_file(unsigned char * out, char * filename)
 {
 	FILE *write_ptr;
 	write_ptr = fopen(filename,"wb");  
-	fwrite(out,strlen(out),1,write_ptr); 
+	fwrite(out,sizeof(char),strlen(out),write_ptr); 
 	fclose(write_ptr);
 }
 
@@ -41,6 +45,7 @@ int read_from_file(unsigned char * buffer, char * filename)
 {
 	FILE *ptr;
 	ptr = fopen(filename,"rb");
+
 	int length;  
 
 	if (ptr != NULL)
