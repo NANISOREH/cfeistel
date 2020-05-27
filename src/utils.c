@@ -28,11 +28,6 @@ void print_byte(char c)
     putchar('\n');
 }
 
-void print_block(block b)
-{
-
-}
-
 void print_to_file(unsigned char * out, char * filename)
 {
 	FILE *write_ptr;

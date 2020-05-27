@@ -19,6 +19,7 @@ int main(int argc, char * argv[])
 		{
 			if (argv[i+1]!=NULL)
 			{
+				key = calloc (strlen(argv[i+1]), sizeof(char));
 				strcpy(key, argv[i+1]);
 			} 
 			else
