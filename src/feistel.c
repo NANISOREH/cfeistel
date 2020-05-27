@@ -118,17 +118,29 @@ void feistel_block(unsigned char * out, block b)
 	}
 }
 
-//placeholder substitution box
+//placeholder for SP network
 void f(unsigned char * right, unsigned char * key)
 {
+	unsigned char temp;
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{
 		right[i] = right[i] ^ key[i];
+		if (i>0) right[i] = (right[i] | right[i-1]);
 	}
 
-	for (int i = 0; i<BLOCKSIZE/2; i++)
-	{
-		right[i] = (right[i] | 9) % 255;
-		right[i] = (right[i] | 10) % 255;
-	}
+	temp = right[0];
+	right[0] = right[7];
+	right[7] = temp;
+
+	temp = right[1];
+	right[1] =right[4];
+	right[4] = temp;
+	
+	temp = right[2];
+	right[2] = right[5];
+	right[5] = temp;
+
+	temp = right[3];
+	right[3] = right[6];
+	right[6] = temp;
 }

@@ -1,6 +1,6 @@
 #define BLOCKSIZE 16
 #define KEYSIZE 8
-#define NROUND 10	
+#define NROUND 10
 
 //this structure represents the state of a block throught the rounds
 typedef struct block {
