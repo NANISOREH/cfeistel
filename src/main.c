@@ -32,7 +32,7 @@ int main(int argc, char * argv[])
 		{
 			if (argv[i+1]!=NULL)
 			{
-				infile = malloc (strlen(argv[i+1]) * sizeof(char));
+				infile = calloc (strlen(argv[i+1]), sizeof(char));
 				strcpy(infile, argv[i+1]);
 			} 
 			else
@@ -57,14 +57,12 @@ int main(int argc, char * argv[])
 		}
 	}
 
-	data = calloc (100000, sizeof(char));
+	data = (unsigned char *)calloc (100000, sizeof(char));
 	if (read_from_file(data, infile) == -1)
 	{
 		printf("\nInput file not found!");
 		return -1;
 	}
-	free(infile);
-	data = realloc(data, strlen(data) * sizeof(char));
 
 	ciphertext = feistel(data, key);
 	free(data);
