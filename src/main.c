@@ -6,6 +6,8 @@
 
 int main(int argc, char * argv[]) 
 {
+	enum mode chosen = DEFAULT_MODE;
+
 	unsigned char * data;
 	unsigned char * key = "defaultk";
 	unsigned char * ciphertext;
@@ -56,6 +58,18 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
+		if (strcmp(argv[i], "-ecb") == 0)
+		{
+			chosen = ecb;
+		}
+		if (strcmp(argv[i], "-cbc-enc") == 0)
+		{
+			chosen = cbc_enc;
+		}
+		if (strcmp(argv[i], "-cbc-dec") == 0)
+		{
+			chosen = cbc_dec;
+		}
 	}
 
 	data = (unsigned char *)calloc (100000, sizeof(char));
@@ -65,7 +79,7 @@ int main(int argc, char * argv[])
 		return -1;
 	}
 
-	ciphertext = feistel(data, key);
+	ciphertext = feistel(data, key, chosen);
 	free(data);
 	print_to_file(ciphertext, outfile);
 
