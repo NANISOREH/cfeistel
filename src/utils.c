@@ -3,7 +3,7 @@
 #include "stdlib.h"
 #include "feistel.h"
 
-int char_xor(unsigned char * result, unsigned char * first, unsigned char * second)
+int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
 {
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{

@@ -58,17 +58,24 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
-		if (strcmp(argv[i], "-ecb") == 0)
+		if (strcmp(argv[i], "-mode") == 0)
 		{
-			chosen = ecb;
-		}
-		if (strcmp(argv[i], "-cbc-enc") == 0)
-		{
-			chosen = cbc_enc;
-		}
-		if (strcmp(argv[i], "-cbc-dec") == 0)
-		{
-			chosen = cbc_dec;
+			if (argv[i+1]!=NULL)
+			{
+				if (strcmp(argv[i+1], "ecb") == 0) chosen = ecb;
+				else if (strcmp(argv[i+1], "cbc-enc") == 0) chosen = cbc_enc;
+				else if (strcmp(argv[i+1], "cbc-dec") == 0) chosen = cbc_dec;
+				else 
+				{
+					printf("\nEnter a valid mode!");
+					return -1;
+				}
+			} 
+			else
+			{
+				printf("\nEnter a valid mode!");
+				return -1;
+			}
 		}
 	}
 
