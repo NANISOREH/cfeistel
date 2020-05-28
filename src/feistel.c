@@ -62,9 +62,7 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 		bcount++;
     }
 
-    if (chosen == ecb)
-    	return operate_ecb_mode(b, bcount);
-    else if (chosen == cbc_enc)
+    if (chosen == cbc_enc)
     	return encrypt_cbc_mode(b, bcount);
     else if (chosen == cbc_dec)
     	return decrypt_cbc_mode(b, bcount);
@@ -76,7 +74,7 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 //it's a bit of a bad ECB, which is amazing, given how ECB is already conceptually bad.
 //Thing is, you can't even take advantage of how multithreadable ECB is since i'm not handling concurrency at all
 //and that would literally be the only upside of ECB. ¯\_(ツ)_/¯
-unsigned char * operate_ecb_mode(block * b, int bnum)
+/*unsigned char * operate_ecb_mode(block * b, int bnum)
 {
 	unsigned char * ciphertext;
 	int bcount=0;
@@ -92,7 +90,7 @@ unsigned char * operate_ecb_mode(block * b, int bnum)
 	}
 
 	return ciphertext;
-}
+}*/
 
 //Executes encryption in CBC mode; takes a block array and the number of blocks, returns processed data.
 unsigned char * encrypt_cbc_mode(block * b, int bnum)
@@ -139,8 +137,7 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum)
 	//making a copy of the whole ciphertext: for cbc decryption you need for each block the ciphertext of the
 	//previous one. Since I'm operating the feistel algorithm in-place I needed to store those in advance.
 	//Later I'll find a more elegant way to do it (like a partial buffer with instead of a full-on copy).
-	block * blocks_copy;
-	blocks_copy = calloc(bnum, sizeof(block));
+	block blocks_copy[bnum * sizeof(block)];
 	memcpy(blocks_copy, b, bnum * sizeof(block));
 
 	//initialization vector
@@ -178,7 +175,6 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum)
 
 	}
 
-	free(blocks_copy);
 	return plaintext;
 }
 
@@ -194,7 +190,7 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char * 
 		strncpy(templeft, left, BLOCKSIZE/2);
 
 		strncpy(left, right, BLOCKSIZE/2);
-		f(right, round_key);
+		sp_network(right, round_key);
 		half_block_xor(right, templeft, right);
 	}
 	
@@ -205,29 +201,63 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char * 
 
 }
 
-//placeholder for SP network
-void f(unsigned char * right, unsigned char * key)
+//"f" function of the feistel cipher. Contains a VERY basic SP network. 
+void sp_network(unsigned char * data, unsigned char * key)
 {
-	unsigned char temp;
+	unsigned char left_part;
+	unsigned char right_part;
+
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{
-		right[i] = right[i] ^ key[i];
-		if (i>0) right[i] = (right[i] | right[i-1]);
+		//XORing the round key with the block data
+		data[i] = data[i] ^ key[i];
+
+		//Splitting the bytes into two parts of 4 bits and feeding them to the substitution box.
+		//Would have been better to leave them in one piece and operate on a 8-bit S-box? Yes.
+		//Do I have better ways to spend my time than writing a 256-entries lookup table? Also yes. Barely, but yes. 
+		split_byte(&left_part, &right_part, data[i]);
+		s_box(&right_part);
+		s_box(&left_part);
+		merge_byte(&data[i], left_part, right_part);
 	}
 
-	temp = right[0];
-	right[0] = right[7];
-	right[7] = temp;
+//Permutations, or kind of. I'm just moving whole bytes around, it would be better to find a way to
+//move single bits all across the block.
+	unsigned char temp;
+	temp = data[0];
+	data[0] = data[7];
+	data[7] = temp;
+	temp = data[1];
+	data[1] =data[4];
+	data[4] = temp;
+	temp = data[2];
+	data[2] = data[5];
+	data[5] = temp;
+	temp = data[3];
+	data[3] = data[6];
+	data[6] = temp;
+}
 
-	temp = right[1];
-	right[1] =right[4];
-	right[4] = temp;
-	
-	temp = right[2];
-	right[2] = right[5];
-	right[5] = temp;
+void s_box(unsigned char * byte)
+{
+	switch (*byte)
+	{
+		case 0:	*byte = 7;
+		case 1: *byte = 3;
+		case 2: *byte = 9;
+		case 3: *byte = 11;
+		case 4: *byte = 15;
+		case 5:	*byte = 14;
+		case 6: *byte = 4;
+		case 7: *byte = 5;
+		case 8:	*byte = 1;
+		case 9: *byte = 6;
+		case 10: *byte = 8;
+		case 11: *byte = 2;
+		case 12: *byte = 10;
+		case 13: *byte = 12;
+		case 14: *byte = 0;
+		case 15: *byte = 13;
+	}
 
-	temp = right[3];
-	right[3] = right[6];
-	right[6] = temp;
 }
