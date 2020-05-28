@@ -30,6 +30,22 @@ void print_to_file(unsigned char * out, char * filename)
 	fclose(write_ptr);
 }
 
+unsigned char split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole)
+{
+	*right_part = whole;
+	*left_part = whole;
+
+	*right_part = *right_part<<(BLOCKSIZE/4);
+	*right_part = *right_part>>(BLOCKSIZE/4);
+	*left_part = *left_part>>(BLOCKSIZE/4);
+}
+
+void merge_byte(unsigned char * target, unsigned char left_part, unsigned char right_part)
+{
+	left_part = left_part <<(BLOCKSIZE/4);
+	*target = right_part | left_part;
+}
+
 int read_from_file(unsigned char * buffer, char * filename)
 {
 	FILE *ptr;

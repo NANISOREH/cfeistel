@@ -62,9 +62,8 @@ int main(int argc, char * argv[])
 		{
 			if (argv[i+1]!=NULL)
 			{
-				if (strcmp(argv[i+1], "ecb") == 0) chosen = ecb;
-				else if (strcmp(argv[i+1], "cbc-enc") == 0) chosen = cbc_enc;
-				else if (strcmp(argv[i+1], "cbc-dec") == 0) chosen = cbc_dec;
+				if (strcmp(argv[i+1], "enc") == 0) chosen = cbc_enc;
+				else if (strcmp(argv[i+1], "dec") == 0) chosen = cbc_dec;
 				else 
 				{
 					printf("\nEnter a valid mode!");
