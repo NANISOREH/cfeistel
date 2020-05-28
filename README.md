@@ -19,5 +19,6 @@ If parameters are not specified default values are used.
 Selectable modes are:
 - `enc` for encryption in CBC mode
 - `dec` for decryption in CBC mode
+
 The -mode parameter will probably work differently when I'll implement more modes of operation.
 
