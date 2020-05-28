@@ -5,7 +5,7 @@
 #include "feistel.h"
 
 //input data handling, starts execution of the cipher
-unsigned char * feistel(unsigned char * data, unsigned char * key)
+unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode chosen)
 {
 	int remainder = strlen(data) % BLOCKSIZE;
 	unsigned char buffer[BLOCKSIZE];
@@ -62,35 +62,96 @@ unsigned char * feistel(unsigned char * data, unsigned char * key)
 		bcount++;
     }
 
-    return operate_ecb_mode(b, bcount);
+    if (chosen == ecb)
+    	return operate_ecb_mode(b, bcount);
+    else if (chosen == cbc_enc)
+    	return encrypt_cbc_mode(b, bcount);
+    else if (chosen == cbc_dec)
+    	return decrypt_cbc_mode(b, bcount);
+
+    return NULL;
 }
 
-//executes the cipher in ECB mode; takes a block array and the number of blocks, returns processed data
+//Executes the cipher in ECB mode; takes a block array and the number of blocks, returns processed data.
+//it's a bit of a bad ECB, which is amazing, given how ECB is already conceptually bad.
+//Thing is, you can't even take advantage of how multithreadable ECB is since i'm not handling concurrency at all
+//and that would literally be the only upside of ECB. ¯\_(ツ)_/¯
 unsigned char * operate_ecb_mode(block * b, int bnum)
 {
 	unsigned char * ciphertext;
-	unsigned char done_block[BLOCKSIZE];
 	int bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 
 	//launching the feistel algorithm on every block, storing the result in ciphertext
-	for (int i=0; i<BLOCKSIZE * bnum; i++) 
+	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
-		if (i % BLOCKSIZE == 0 && bcount < bnum) 
-		{
-			feistel_block(done_block, b[bcount]);
-			bcount++;
-		}
-
-		ciphertext[i] = done_block[i % BLOCKSIZE];
+		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_key);
+		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
+		bcount++;
 	}
 
 	return ciphertext;
 }
 
+unsigned char * encrypt_cbc_mode(block * b, int bnum)
+{
+	unsigned char * ciphertext;
+	block prev_ciphertext;
+	int bcount=0;
+	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+
+	//prev_ciphertext will start off with the initialization vector
+	strcpy(prev_ciphertext.left, "al2ewwed");
+	strcpy(prev_ciphertext.right, "12dewccs");
+
+	//launching the feistel algorithm on every block, storing the result in ciphertext
+	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	{
+		char_xor(b[bcount].left, b[bcount].left, prev_ciphertext.left);
+		char_xor(b[bcount].right, b[bcount].right, prev_ciphertext.right);
+		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_key);
+		for (int j=0; j<BLOCKSIZE; j++)	
+		{
+			ciphertext[i+j] = b[bcount].left[j];
+			prev_ciphertext.left[j] = b[bcount].left[j];
+		}
+		bcount++;
+	}
+
+	return ciphertext;
+}
+
+unsigned char * decrypt_cbc_mode(block * b, int bnum)
+{
+	unsigned char * plaintext;
+	block prev_ciphertext;
+	int bcount=0;
+	plaintext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+
+	//prev_ciphertext will start off with the initialization vector
+	strcpy(prev_ciphertext.left, "al2ewwed");
+	strcpy(prev_ciphertext.right, "12dewccs");
+
+	//launching the feistel algorithm on every block, storing the result in plaintext
+	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	{
+		memcpy(&prev_ciphertext, &b[bcount], sizeof(block));
+		if (i % BLOCKSIZE == 0 && bcount < bnum) 
+		{
+			feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_key);
+			char_xor(b[bcount].left, b[bcount].left, prev_ciphertext.left);
+			char_xor(b[bcount].right, b[bcount].right, prev_ciphertext.right);
+			for (int j=0; j<BLOCKSIZE; j++)	plaintext[i+j] = b[bcount].left[j];
+			bcount++;
+		}
+
+	}
+
+	return plaintext;
+}
 
 //execution of the cipher for a single block
-void feistel_block(unsigned char * out, block b) 
+void feistel_block(unsigned char * left, unsigned char * right, unsigned char * round_key) 
 {
 	//buffer variable to temporarily store the left part of the block during the round execution
 	unsigned char templeft[BLOCKSIZE/2];
@@ -98,24 +159,18 @@ void feistel_block(unsigned char * out, block b)
 	//execution of the cipher rounds on the block
 	for (int i=0; i<NROUND; i++)
 	{
-		strncpy(templeft, b.left, BLOCKSIZE/2);
+		strncpy(templeft, left, BLOCKSIZE/2);
 
-		strncpy(b.left, b.right, BLOCKSIZE/2);
-		f(b.right, b.round_key);
-		char_xor(b.right, templeft, b.right);
+		strncpy(left, right, BLOCKSIZE/2);
+		f(right, round_key);
+		char_xor(right, templeft, right);
 	}
 	
 	//final inversion of left and right parts of the block after the last round
-	strncpy(templeft, b.left, BLOCKSIZE/2);
-	strncpy(b.left, b.right, BLOCKSIZE/2);
-	strncpy(b.right, templeft, BLOCKSIZE/2);
+	strncpy(templeft, left, BLOCKSIZE/2);
+	strncpy(left, right, BLOCKSIZE/2);
+	strncpy(right, templeft, BLOCKSIZE/2);
 
-	//merging left and right part into an array to return the result of the execution
-	for (int i=0; i<BLOCKSIZE/2; i++)
-	{
-		out[i] = b.left[i];
-		out[i+8] = b.right[i];
-	}
 }
 
 //placeholder for SP network
