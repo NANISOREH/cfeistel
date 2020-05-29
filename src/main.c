@@ -54,6 +54,7 @@ int main(int argc, char * argv[])
 			{
 				infile = calloc (strlen(argv[i+1]), sizeof(char));
 				strcpy(infile, argv[i+1]);
+				i++;
 			} 
 			else
 			{
