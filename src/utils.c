@@ -25,9 +25,26 @@ void print_byte(char c)
 void print_to_file(unsigned char * out, char * filename)
 {
 	FILE *write_ptr;
-	write_ptr = fopen(filename,"wb");  
+	write_ptr = fopen(filename,"w");  
 	fwrite(out,sizeof(char),strlen(out),write_ptr); 
 	fclose(write_ptr);
+}
+
+void print_block_checksum(unsigned char * left, unsigned char * right)
+{
+	long long unsigned checksum = 0;
+	char block_data[BLOCKSIZE+1];
+
+	for (int j=0; j<BLOCKSIZE/2; j++)
+	{
+		checksum = checksum + left[j] + right[j];
+		block_data[j] = left[j];
+		block_data[j + BLOCKSIZE/2] = right[j];
+	}
+	block_data[BLOCKSIZE] = '\0';
+	printf("\nblock text: %s", block_data);
+	printf("\nblock sum: %llu\n", checksum);
+	checksum = 0;
 }
 
 unsigned char split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole)
@@ -49,7 +66,7 @@ void merge_byte(unsigned char * target, unsigned char left_part, unsigned char r
 int read_from_file(unsigned char * buffer, char * filename)
 {
 	FILE *ptr;
-	ptr = fopen(filename,"rb");
+	ptr = fopen(filename,"r");
 
 	int length;  
 
