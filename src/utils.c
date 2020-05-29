@@ -13,6 +13,19 @@ int half_block_xor(unsigned char * result, unsigned char * first, unsigned char 
 	return 1;
 }
 
+void reverse_keys(unsigned char keys[NROUND][KEYSIZE])
+{
+	unsigned char temp[NROUND][KEYSIZE];
+	memcpy(temp, keys, NROUND * KEYSIZE);
+	int j=NROUND-1;
+
+	for (int i=0; i<NROUND; i++)
+	{
+		strncpy(keys[i], temp[j], NROUND);
+		j--;
+	}
+}
+
 void print_byte(char c)
 {
     for (int i = 7; i >= 0; --i)

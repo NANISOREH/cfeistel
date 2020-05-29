@@ -7,17 +7,32 @@
 int main(int argc, char * argv[]) 
 {
 	enum mode chosen = DEFAULT_MODE;
+	enum operation to_do = DEFAULT_OP;
 
 	unsigned char * data;
 	unsigned char * key;
 	key = calloc (KEYSIZE, sizeof(char));
 	strncpy(key, "defaultk", KEYSIZE);
-	unsigned char * ciphertext;
+	unsigned char * result;
 	char * infile = "in";
 	char * outfile = "out";
 
-	for (int i=1; i<argc; i++)
+	if (argv[1]!= NULL && strcmp(argv[1], "enc") == 0)
 	{
+		to_do = enc;
+	}
+	else if (argv[1]!= NULL && strcmp(argv[1], "dec") == 0)
+	{
+		to_do = dec;
+	}
+	else
+	{
+		printf("\nEnter a valid command! (enc/dec)");
+		return -1;
+	}	
+
+	for (int i=2; i<argc; i++)
+	{	
 		//-k parameter, specified key
 		if (strcmp(argv[i], "-k") == 0)
 		{
@@ -33,7 +48,7 @@ int main(int argc, char * argv[])
 			}
 		}
 		//-in parameter, specified input file
-		if (strcmp(argv[i], "-in") == 0)
+		else if (strcmp(argv[i], "-in") == 0)
 		{
 			if (argv[i+1]!=NULL)
 			{
@@ -47,7 +62,7 @@ int main(int argc, char * argv[])
 			}
 		}
 		//-out parameter, specified output file
-		if (strcmp(argv[i], "-out") == 0)
+		else if (strcmp(argv[i], "-out") == 0)
 		{
 			if (argv[i+1]!=NULL)
 			{
@@ -60,24 +75,13 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
-		if (strcmp(argv[i], "-mode") == 0)
+		else if (strcmp(argv[i], "-ecb") == 0)
 		{
-			if (argv[i+1]!=NULL)
-			{
-				if (strcmp(argv[i+1], "ecb") == 0) chosen = ecb;
-				else if (strcmp(argv[i+1], "enc") == 0) chosen = cbc_enc;
-				else if (strcmp(argv[i+1], "dec") == 0) chosen = cbc_dec;
-				else 
-				{
-					printf("\nEnter a valid mode!");
-					return -1;
-				}
-			} 
-			else
-			{
-				printf("\nEnter a valid mode!");
-				return -1;
-			}
+			chosen = ecb;
+		}
+		else if (strcmp(argv[i], "-cbc") == 0) 
+		{
+			chosen = cbc;
 		}
 	}
 
@@ -88,9 +92,9 @@ int main(int argc, char * argv[])
 		return -1;
 	}
 
-	ciphertext = feistel(data, key, chosen);
+	result = feistel(data, key, chosen, to_do);
 	free(data);
-	print_to_file(ciphertext, outfile);
+	print_to_file(result, outfile);
 
 	return 0;
 }
