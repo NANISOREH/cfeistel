@@ -9,14 +9,11 @@ The "f" part of the cipher has no real cryptographic value but still serves the 
 Clone this repo, cd into it and `make cfeistel`. Make sure you have make installed.
 
 # Usage
-Synopsis:
+Encryption:
+`./cfeistel enc [-k key][-in infile][-out outfile][-ecb][-cbc]`
 
-`./cfeistel enc [-k key][-in infile][-out outfile][-mode ]`
-`./cfeistel dec [-k key][-in infile][-out outfile][-mode ]`
+Decryption:
+`./cfeistel dec [-k key][-in infile][-out outfile][-ecb][-cbc]`
 
 If parameters are not specified default values are used. 
 "in" is the default input file, "out" is the default output file, "defaultk" is the default key value and "ecb" is the default mode.
-
-Selectable modes are:
-- `ecb`
-- `cbc` 
