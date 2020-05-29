@@ -9,7 +9,9 @@ int main(int argc, char * argv[])
 	enum mode chosen = DEFAULT_MODE;
 
 	unsigned char * data;
-	unsigned char * key = "defaultk";
+	unsigned char * key;
+	key = calloc (KEYSIZE, sizeof(char));
+	strncpy(key, "defaultk", KEYSIZE);
 	unsigned char * ciphertext;
 	char * infile = "in";
 	char * outfile = "out";
@@ -21,8 +23,8 @@ int main(int argc, char * argv[])
 		{
 			if (argv[i+1]!=NULL)
 			{
-				key = calloc (strlen(argv[i+1]), sizeof(char));
-				strcpy(key, argv[i+1]);
+				key = calloc (KEYSIZE, sizeof(char));
+				strncpy(key, argv[i+1], KEYSIZE);
 			} 
 			else
 			{
@@ -62,7 +64,8 @@ int main(int argc, char * argv[])
 		{
 			if (argv[i+1]!=NULL)
 			{
-				if (strcmp(argv[i+1], "enc") == 0) chosen = cbc_enc;
+				if (strcmp(argv[i+1], "ecb") == 0) chosen = ecb;
+				else if (strcmp(argv[i+1], "enc") == 0) chosen = cbc_enc;
 				else if (strcmp(argv[i+1], "dec") == 0) chosen = cbc_dec;
 				else 
 				{
