@@ -7,25 +7,26 @@
 //handles input data, starts execution of the cipher, returns the result
 unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode chosen, enum operation to_do)
 {
-	int remainder = strlen(data) % BLOCKSIZE;
+	//if the size of the input data is not multiple of the block size,
+	//this will be the number of leftover bytes that will go into the last padded block
+	int remainder = strlen(data) % BLOCKSIZE;	
+	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
-	//round_keys = calloc (NROUND * KEYSIZE, sizeof(unsigned char));
 	int i=0;
 	int bcount=0;
 
-	//see the function schedule_key for info
-	schedule_key(round_keys, key);
-	if (to_do == dec) reverse_keys(round_keys);
+	schedule_key(round_keys, key);	//see the function schedule_key for info
+	if (to_do == dec) reverse_keys(round_keys);	//round keys sequence has to be inverted for decryption
 
 	//allocating space for the blocks. 
 	block * b;
 	if (remainder == 0)		//data size is multiple of the blocksize
 		b = (block*)calloc((strlen(data) * sizeof(char) / BLOCKSIZE), sizeof(block));		
-	else					//data size is not multiple of the blocksize
+	else					//data size is not multiple of the blocksize, we need an extra block
 		b = (block*)calloc((strlen(data) * sizeof(char) / BLOCKSIZE) + 1, sizeof(block));	
 
-	while (i < strlen(data))
+	while (i < strlen(data))	//forming the blocks from the input data
     {
         buffer[i % BLOCKSIZE] = data[i];
         i++;
@@ -40,49 +41,46 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 				b[bcount].right[j] = buffer[j+8];
 			}
 
-			memcpy(b[bcount].round_keys, round_keys, NROUND * KEYSIZE);
 			bcount++;
-
-			if (bcount==strlen(data)/BLOCKSIZE)
+			if (bcount==strlen(data)/BLOCKSIZE)		//we formed the right number of blocks, break the cycle
 				break;
         }
     }
 
     if (remainder>0)	//forming the last 0-padded block, if there's leftover data
     {
-    	for (int z=0; z<BLOCKSIZE; z++)		
+    	for (int z=0; z<BLOCKSIZE; z++)	
     	{
-    		if (z < remainder)
+    		if (z < remainder)	//there's still leftover data
     			buffer[z] = data[(bcount * BLOCKSIZE) + z];
-    		else
+    		else	//no more leftover data, proceed with the padding
     			buffer[z] = '0';
     	}
 
-		for (int y=0; y<BLOCKSIZE/2; y++)
+		for (int y=0; y<BLOCKSIZE/2; y++)	//copying the buffered data on the last block
 		{
 			b[bcount].left[y] = buffer[y];
 			b[bcount].right[y] = buffer[y+8];
 		}
 
-		memcpy(b[bcount].round_keys, round_keys, NROUND * KEYSIZE);
 		bcount++;
     }
 
     if (chosen == cbc && to_do == enc)
-    	return encrypt_cbc_mode(b, bcount);
+    	return encrypt_cbc_mode(b, bcount, round_keys);
     if (chosen == ecb)
-    	return operate_ecb_mode(b, bcount);
+    	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == cbc && to_do == dec)
-    	return decrypt_cbc_mode(b, bcount);
+    	return decrypt_cbc_mode(b, bcount, round_keys);
 
     return NULL;
 }
 
-//Executes the cipher in ECB mode; takes a block array and the number of blocks, returns processed data.
+//Executes the cipher in ECB mode; takes a block array and the round keys, returns processed data.
 //it's a bit of a bad ECB, which is amazing, given how ECB is already conceptually bad.
 //Thing is, you can't even take advantage of how multithreadable ECB is since i'm not handling concurrency at all
 //and that would literally be the only upside of ECB. ¯\_(ツ)_/¯
-unsigned char * operate_ecb_mode(block * b, int bnum)
+unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
 	int bcount=0;
@@ -93,10 +91,10 @@ unsigned char * operate_ecb_mode(block * b, int bnum)
 	{
 		printf("\n\n\nblock %d (ECB)", bcount);
 		printf("\n---------- BEFORE -----------");
-		print_block_checksum(b[bcount].left, b[bcount].right);
-		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_keys);
+		print_block(b[bcount].left, b[bcount].right);
+		feistel_block(b[bcount].left, b[bcount].right, round_keys);
 		printf("---------- AFTER ------------");
-		print_block_checksum(b[bcount].left, b[bcount].right);
+		print_block(b[bcount].left, b[bcount].right);
 		
 		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
 		bcount++;
@@ -105,8 +103,8 @@ unsigned char * operate_ecb_mode(block * b, int bnum)
 	return ciphertext;
 }
 
-//Executes encryption in CBC mode; takes a block array and the number of blocks, returns processed data.
-unsigned char * encrypt_cbc_mode(block * b, int bnum)
+//Executes encryption in CBC mode; takes a block array and the round keys, returns processed data.
+unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
 	int bcount=0;
@@ -126,17 +124,17 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum)
 	{
 		printf("\n\n\nblock %d (CBC-ENC)", bcount);
 		printf("\n---------- BEFORE -----------");
-		print_block_checksum(b[bcount].left, b[bcount].right);
+		print_block(b[bcount].left, b[bcount].right);
 
 		//XORing the current block x with the ciphertext of the block x-1
 		half_block_xor(b[bcount].left, b[bcount].left, prev_ciphertext.left);
 		half_block_xor(b[bcount].right, b[bcount].right, prev_ciphertext.right);
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
-		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_keys);
+		feistel_block(b[bcount].left, b[bcount].right, round_keys);
 		
 		printf("---------- AFTER ------------");
-		print_block_checksum(b[bcount].left, b[bcount].right);
+		print_block(b[bcount].left, b[bcount].right);
 		
 		memcpy(&prev_ciphertext, &b[bcount], sizeof(block));
 		
@@ -148,8 +146,8 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum)
 	return ciphertext;
 }
 
-//Executes decryption in CBC mode; takes a block array and the number of blocks, returns processed data.
-unsigned char * decrypt_cbc_mode(block * b, int bnum)
+//Executes decryption in CBC mode; takes a block array and the round keys, returns processed data.
+unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	int bcount=0;
 	unsigned char * plaintext;
@@ -178,8 +176,8 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum)
 			//First thing, you run feistel on the block,...
 			printf("\n\n\nblock %d (CBC-DEC)", bcount);
 			printf("\n---------- BEFORE -----------");
-			print_block_checksum(b[bcount].left, b[bcount].right);
-			feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_keys);
+			print_block(b[bcount].left, b[bcount].right);
+			feistel_block(b[bcount].left, b[bcount].right, round_keys);
 
 			if (i == 0)		//...if it's the first block, you xor it with the IV...
 			{
@@ -193,7 +191,7 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum)
 			}
 
 			printf("---------- AFTER ------------");
-			print_block_checksum(b[bcount].left, b[bcount].right);
+			print_block(b[bcount].left, b[bcount].right);
 			
 			//storing the deciphered block in plaintext variable
 			for (int j=0; j<BLOCKSIZE; j++)	plaintext[i+j] = b[bcount].left[j];
@@ -299,6 +297,7 @@ void sp_network(unsigned char * data, unsigned char * key)
 	data[6] = temp;
 }
 
+//4-bit substitution box
 void s_box(unsigned char * byte)
 {
 	switch (*byte)

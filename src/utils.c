@@ -43,7 +43,7 @@ void print_to_file(unsigned char * out, char * filename)
 	fclose(write_ptr);
 }
 
-void print_block_checksum(unsigned char * left, unsigned char * right)
+void print_block(unsigned char * left, unsigned char * right)
 {
 	long long unsigned checksum = 0;
 	char block_data[BLOCKSIZE+1];
