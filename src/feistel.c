@@ -4,13 +4,19 @@
 #include "utils.h"
 #include "feistel.h"
 
-//input data handling, starts execution of the cipher
-unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode chosen)
+//handles input data, starts execution of the cipher, returns the result
+unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode chosen, enum operation to_do)
 {
 	int remainder = strlen(data) % BLOCKSIZE;
 	unsigned char buffer[BLOCKSIZE];
+	unsigned char round_keys[NROUND][KEYSIZE];
+	//round_keys = calloc (NROUND * KEYSIZE, sizeof(unsigned char));
 	int i=0;
 	int bcount=0;
+
+	//see the function schedule_key for info
+	schedule_key(round_keys, key);
+	if (to_do == dec) reverse_keys(round_keys);
 
 	//allocating space for the blocks. 
 	block * b;
@@ -34,7 +40,7 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 				b[bcount].right[j] = buffer[j+8];
 			}
 
-			strncpy(b[bcount].round_key, key, KEYSIZE);
+			memcpy(b[bcount].round_keys, round_keys, NROUND * KEYSIZE);
 			bcount++;
 
 			if (bcount==strlen(data)/BLOCKSIZE)
@@ -58,15 +64,15 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 			b[bcount].right[y] = buffer[y+8];
 		}
 
-		strncpy(b[bcount].round_key, key, KEYSIZE);
+		memcpy(b[bcount].round_keys, round_keys, NROUND * KEYSIZE);
 		bcount++;
     }
 
-    if (chosen == cbc_enc)
+    if (chosen == cbc && to_do == enc)
     	return encrypt_cbc_mode(b, bcount);
     if (chosen == ecb)
     	return operate_ecb_mode(b, bcount);
-    else if (chosen == cbc_dec)
+    else if (chosen == cbc && to_do == dec)
     	return decrypt_cbc_mode(b, bcount);
 
     return NULL;
@@ -88,7 +94,7 @@ unsigned char * operate_ecb_mode(block * b, int bnum)
 		printf("\n\n\nblock %d (ECB)", bcount);
 		printf("\n---------- BEFORE -----------");
 		print_block_checksum(b[bcount].left, b[bcount].right);
-		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_key);
+		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_keys);
 		printf("---------- AFTER ------------");
 		print_block_checksum(b[bcount].left, b[bcount].right);
 		
@@ -127,7 +133,7 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum)
 		half_block_xor(b[bcount].right, b[bcount].right, prev_ciphertext.right);
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
-		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_key);
+		feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_keys);
 		
 		printf("---------- AFTER ------------");
 		print_block_checksum(b[bcount].left, b[bcount].right);
@@ -173,7 +179,7 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum)
 			printf("\n\n\nblock %d (CBC-DEC)", bcount);
 			printf("\n---------- BEFORE -----------");
 			print_block_checksum(b[bcount].left, b[bcount].right);
-			feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_key);
+			feistel_block(b[bcount].left, b[bcount].right, b[bcount].round_keys);
 
 			if (i == 0)		//...if it's the first block, you xor it with the IV...
 			{
@@ -199,22 +205,24 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum)
 	return plaintext;
 }
 
-
-unsigned char * schedule_key(unsigned char * key)
+//Schedules the round keys by extending the 8 bytes given in input, which are directly used for the first round
+void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key)
 {
-	unsigned char * round_keys[] = malloc (NROUND * KEYSIZE);
-	unsigned char master_key[KEYSIZE];
-	memcpy(master_key, key, KEYSIZE);
 	unsigned char left_part;
 	unsigned char right_part;
+	unsigned char master_key[KEYSIZE];
+	memcpy(master_key, key, KEYSIZE);
 
 	for (int j = 0; j<NROUND; j++)
 	{
-		if (j == 0)
+		if (j == 0)	//first round key, the 8 bytes given as master key are used directly
 		{
-			strncpy(round_keys[0], master_key, KEYSIZE); 
+			strncpy(round_keys[0], master_key, KEYSIZE);
 		}
-		else 
+		
+		//very basic key extension schedule: the first byte is discarded, the rest of them shift to the left 
+		//and a new one is added to the right (i'm using the s-box to derive the new byte just to do something)
+		else
 		{
 			for (int i = 1; i<KEYSIZE; i++) 
 			{
@@ -223,15 +231,15 @@ unsigned char * schedule_key(unsigned char * key)
 				s_box(&right_part);
 				merge_byte(&master_key[KEYSIZE-1], left_part, right_part);
 			}
-
+			//the altered key generated in the iteration j is saved as round key number j,
+			//the final result is an extended key stored in the round_keys matrix
 			strncpy(round_keys[j], master_key, KEYSIZE);
 		} 
 	}
-
 }
 
 //execution of the cipher for a single block
-void feistel_block(unsigned char * left, unsigned char * right, unsigned char * round_key) 
+void feistel_block(unsigned char * left, unsigned char * right, unsigned char round_keys[NROUND][KEYSIZE]) 
 {
 	//buffer variable to temporarily store the left part of the block during the round execution
 	unsigned char templeft[BLOCKSIZE/2];
@@ -244,7 +252,7 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char * 
 		strncpy(templeft, left, BLOCKSIZE/2);
 
 		strncpy(left, right, BLOCKSIZE/2);
-		sp_network(right, round_key);
+		sp_network(right, round_keys[i]);
 		half_block_xor(right, templeft, right);
 	}
 	
