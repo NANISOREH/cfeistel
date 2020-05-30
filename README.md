@@ -1,19 +1,18 @@
 # cfeistel
-Implementation of a basic Feistel cipher in C. Needless to say, it's just an exercise and NOT intended to be used as actual crypto.
+<p>Implementation of a basic Feistel cipher in C. Needless to say, it's just an exercise and NOT intended to be used as actual crypto.
+As of now, it operates on 16 bytes blocks and an 8 bytes key, in CBC and ECB mode. '0' padding is applied both to blocks and key if needed. I plan on implementing more modes of operation and a proper padding handling. </p>
 
-As of now, it operates on 16 bytes blocks and an 8 bytes key, in CBC and ECB mode. '0' padding is applied both to blocks and key if needed. I plan on implementing more modes of operation and a proper padding handling.
-
-The "f" part of the cipher has no real cryptographic value but still serves the purpose of showing a Feistel cipher in motion. It aspires to be a very simple SP network, I don't know if it can't be defined as one right now.
+<p>The "f" part of the cipher has no real cryptographic value but still serves the purpose of showing a Feistel cipher in motion. It aspires to be a very simple SP network.</p>
 
 # Installation
-Clone this repo, cd into it and `make cfeistel`. Make sure you have make installed.
+<p>Clone this repo, cd into it and `make cfeistel`. Make sure you have make installed.</p>
 
 # Usage
 Encryption:
-`./cfeistel enc [-k key][-in infile][-out outfile][-ecb][-cbc]`
+`./cfeistel enc [-k key][-in infile][-out outfile][-m mode]`
 
 Decryption:
-`./cfeistel dec [-k key][-in infile][-out outfile][-ecb][-cbc]`
+`./cfeistel dec [-k key][-in infile][-out outfile][-m mode]`
 
-If parameters are not specified default values are used. 
-"in" is the default input file, "out" is the default output file, "defaultk" is the default key value and "ecb" is the default mode.
+<p>If parameters are not specified default values are used. 
+<em>in</em> is the default input file, <em>out</em> is the default output file, <em>defaultk</em> is the default key value and <em>ecb</em> is the default mode. The -m parameter accepts <em>ecb</em> and <em>cbc</em>.</p>

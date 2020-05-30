@@ -27,7 +27,7 @@ int main(int argc, char * argv[])
 	}
 	else
 	{
-		printf("\nEnter a valid command! (enc/dec)");
+		printf("\nEnter a valid command! (enc/dec)\n\n");
 		return -1;
 	}	
 
@@ -43,7 +43,7 @@ int main(int argc, char * argv[])
 			} 
 			else
 			{
-				printf("\nEnter a non-empty key!");
+				printf("\nEnter a non-empty key\n");
 				return -1;
 			}
 		}
@@ -58,7 +58,7 @@ int main(int argc, char * argv[])
 			} 
 			else
 			{
-				printf("\nEnter a non-empty filename!");
+				printf("\nEnter a non-empty filename\n");
 				return -1;
 			}
 		}
@@ -69,20 +69,45 @@ int main(int argc, char * argv[])
 			{
 				outfile = malloc (strlen(argv[i+1]) * sizeof(char));
 				strcpy(outfile, argv[i+1]);
+				i++;
 			} 
 			else
 			{
-				printf("\nEnter a non-empty filename!");
+				printf("\nEnter a non-empty filename\n");
 				return -1;
 			}
 		}
-		else if (strcmp(argv[i], "-ecb") == 0)
+		//-m parameter, specified mode of operation
+		else if (strcmp(argv[i], "-m") == 0)
 		{
-			chosen = ecb;
+			if (argv[i+1]!=NULL)
+			{
+				if (strcmp(argv[i+1], "ecb") == 0)
+				{
+					chosen = ecb;
+					i++;
+				}
+				else if (strcmp(argv[i+1], "cbc") == 0) 
+				{
+					chosen = cbc;
+					i++;
+				}
+				else
+				{
+					printf("\nEnter a valid mode of operation (ecb/cbc)\n");
+					return -1;
+				}
+			} 
+			else
+			{
+				printf("\nEnter a non-empty filename!\n");
+				return -1;
+			}
 		}
-		else if (strcmp(argv[i], "-cbc") == 0) 
+		else
 		{
-			chosen = cbc;
+			printf("\nUnknown parameter '%s'\n", argv[i]);
+			return -1;
 		}
 	}
 

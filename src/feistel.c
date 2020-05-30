@@ -76,6 +76,39 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
     return NULL;
 }
 
+//Schedules the round keys by extending the 8 bytes given in input, which are directly used for the first round
+void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key)
+{
+	unsigned char left_part;
+	unsigned char right_part;
+	unsigned char master_key[KEYSIZE];
+	memcpy(master_key, key, KEYSIZE);
+
+	for (int j = 0; j<NROUND; j++)
+	{
+		if (j == 0)	//first round key, the 8 bytes given as master key are used directly
+		{
+			strncpy(round_keys[0], master_key, KEYSIZE);
+		}
+		
+		//very basic key extension schedule: the first byte is discarded, the rest of them shift to the left 
+		//and a new one is added to the right (i'm recycling the s-box to derive the new byte, might need to do something else)
+		else
+		{
+			for (int i = 1; i<KEYSIZE; i++) 
+			{
+				master_key[i-1] = master_key[i];
+				split_byte(&left_part, &right_part, master_key[KEYSIZE-1]);
+				s_box(&right_part);
+				merge_byte(&master_key[KEYSIZE-1], left_part, right_part);
+			}
+			//the altered key generated in the iteration j is saved as round key number j,
+			//the final result is an extended key stored in the round_keys matrix
+			strncpy(round_keys[j], master_key, KEYSIZE);
+		} 
+	}
+}
+
 //Executes the cipher in ECB mode; takes a block array and the round keys, returns processed data.
 //it's a bit of a bad ECB, which is amazing, given how ECB is already conceptually bad.
 //Thing is, you can't even take advantage of how multithreadable ECB is since i'm not handling concurrency at all
@@ -201,39 +234,6 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 	}
 
 	return plaintext;
-}
-
-//Schedules the round keys by extending the 8 bytes given in input, which are directly used for the first round
-void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key)
-{
-	unsigned char left_part;
-	unsigned char right_part;
-	unsigned char master_key[KEYSIZE];
-	memcpy(master_key, key, KEYSIZE);
-
-	for (int j = 0; j<NROUND; j++)
-	{
-		if (j == 0)	//first round key, the 8 bytes given as master key are used directly
-		{
-			strncpy(round_keys[0], master_key, KEYSIZE);
-		}
-		
-		//very basic key extension schedule: the first byte is discarded, the rest of them shift to the left 
-		//and a new one is added to the right (i'm using the s-box to derive the new byte just to do something)
-		else
-		{
-			for (int i = 1; i<KEYSIZE; i++) 
-			{
-				master_key[i-1] = master_key[i];
-				split_byte(&left_part, &right_part, master_key[KEYSIZE-1]);
-				s_box(&right_part);
-				merge_byte(&master_key[KEYSIZE-1], left_part, right_part);
-			}
-			//the altered key generated in the iteration j is saved as round key number j,
-			//the final result is an extended key stored in the round_keys matrix
-			strncpy(round_keys[j], master_key, KEYSIZE);
-		} 
-	}
 }
 
 //execution of the cipher for a single block
