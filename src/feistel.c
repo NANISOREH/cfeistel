@@ -4,27 +4,31 @@
 #include "utils.h"
 #include "feistel.h"
 
-//handles input data, starts execution of the cipher, returns the result
-unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode chosen, enum operation to_do)
+//handles input data, starts execution of the cipher in encryption mode, returns the result
+unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum mode chosen)
 {
-	//if the size of the input data is not multiple of the block size,
-	//this will be the number of leftover bytes that will go into the last padded block
-	int remainder = strlen(data) % BLOCKSIZE;	
+	unsigned long data_len = strlen(data);
 	
+	//if the size of the input data is not multiple of the block size,
+	//remainder will be the number of leftover bytes that will go into the last padded block
+	int remainder = data_len % BLOCKSIZE;	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
 	int i=0;
 	int bcount=0;
 
+	block last_block;
+	snprintf(last_block.left, BLOCKSIZE/2, "%lu", data_len);
+	snprintf(last_block.right, BLOCKSIZE/2, "%lu", 0L);
+
 	schedule_key(round_keys, key);	//see the function schedule_key for info
-	if (to_do == dec) reverse_keys(round_keys);	//round keys sequence has to be inverted for decryption
 
 	//allocating space for the blocks. 
 	block * b;
 	if (remainder == 0)		//data size is multiple of the blocksize
-		b = (block*)calloc((strlen(data) * sizeof(char) / BLOCKSIZE), sizeof(block));		
+		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 1, sizeof(block));		
 	else					//data size is not multiple of the blocksize, we need an extra block
-		b = (block*)calloc((strlen(data) * sizeof(char) / BLOCKSIZE) + 1, sizeof(block));	
+		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 2, sizeof(block));	
 
 	while (i < strlen(data))	//forming the blocks from the input data
     {
@@ -42,7 +46,7 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 			}
 
 			bcount++;
-			if (bcount==strlen(data)/BLOCKSIZE)		//we formed the right number of blocks, break the cycle
+			if (bcount==data_len/BLOCKSIZE)		//we formed the right number of blocks, break the cycle
 				break;
         }
     }
@@ -57,7 +61,7 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
     			buffer[z] = '0';
     	}
 
-		for (int y=0; y<BLOCKSIZE/2; y++)	//copying the buffered data on the last block
+		for (int y=0; y<BLOCKSIZE/2; y++)	//copying the buffered data on the padded block
 		{
 			b[bcount].left[y] = buffer[y];
 			b[bcount].right[y] = buffer[y+8];
@@ -66,12 +70,73 @@ unsigned char * feistel(unsigned char * data, unsigned char * key, enum mode cho
 		bcount++;
     }
 
-    if (chosen == cbc && to_do == enc)
+    //we append a block with the real(unpadded) size of the encrypted data
+    int flag = 0;
+   	memcpy(&b[bcount], &last_block, sizeof(block));
+   	for (int i=0; i<BLOCKSIZE; i++)
+   	{
+   		if (b[bcount].left[i] == '\0')
+   			flag = 1;
+
+   		if (flag == 1)
+   			b[bcount].left[i]='=';
+   	}
+    bcount++;
+
+    if (chosen == cbc)
     	return encrypt_cbc_mode(b, bcount, round_keys);
     if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
-    else if (chosen == cbc && to_do == dec)
+
+    return NULL;
+}
+
+//handles input data, starts execution of the cipher in decryption mode, returns the result
+unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum mode chosen)
+{
+	unsigned long data_len = strlen(data);
+
+	unsigned char buffer[BLOCKSIZE];
+	unsigned char round_keys[NROUND][KEYSIZE];
+	int i=0;
+	int bcount=0;
+
+	schedule_key(round_keys, key);	//see the function schedule_key for info
+	reverse_keys(round_keys);	//round keys sequence has to be inverted for decryption
+
+	//allocating space for the blocks. 
+	block * b;
+	b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));		
+
+	while (i < strlen(data))	//forming the blocks from the input data
+    {
+        buffer[i % BLOCKSIZE] = data[i];
+        i++;
+
+        if ((i+1) % BLOCKSIZE == 0)		//completed a block
+        {
+        	buffer[i % BLOCKSIZE] = data[i];
+        	i++;
+        	for (int j=0; j<BLOCKSIZE/2; j++)	//filling the block with the buffered data
+			{
+				b[bcount].left[j] = buffer[j];
+				b[bcount].right[j] = buffer[j+8];
+			}
+
+			bcount++;
+			if (bcount==data_len/BLOCKSIZE)		//we formed the right number of blocks, break the cycle
+				break;
+        }
+    }
+
+    //we read the size of the data to read before reaching the padding in the last block
+    block last_block;
+	printf("\nLAST BLOCK %s\n", b[bcount-1].left);
+
+    if (chosen == cbc)
     	return decrypt_cbc_mode(b, bcount, round_keys);
+    if (chosen == ecb)
+    	return operate_ecb_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -244,14 +309,14 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char ro
 
 	int checksum=0;
 
-	//execution of NROUND cipher rounds on the block
-	for (int i=0; i<NROUND; i++)
+	for (int i=0; i<NROUND; i++)	//execution of NROUND cipher rounds on the block
 	{
+
 		strncpy(templeft, left, BLOCKSIZE/2);
 
-		strncpy(left, right, BLOCKSIZE/2);
-		sp_network(right, round_keys[i]);
-		half_block_xor(right, templeft, right);
+		strncpy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round 
+		sp_network(right, round_keys[i]);	//f(right)
+		half_block_xor(right, templeft, right);	  //f(right) XOR left 
 	}
 	
 	//final inversion of left and right parts of the block after the last round
