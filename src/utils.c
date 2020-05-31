@@ -35,12 +35,32 @@ void print_byte(char c)
     putchar('\n');
 }
 
+void remove_padding(unsigned char * result)
+{
+	int index = strlen(result) - BLOCKSIZE;
+	unsigned char last_block[BLOCKSIZE];
+	for (int i = 0; i<BLOCKSIZE; i++)
+	{
+		last_block[i] = result[index];
+		index++; 
+	}
+
+	unsigned long size;
+	sscanf(last_block, "%lu", &size);
+
+	for (unsigned long i = size; i<strlen(result); i++) result[i] = '\0';
+}
+
 void print_to_file(unsigned char * out, char * filename)
 {
 	FILE *write_ptr;
-	write_ptr = fopen(filename,"w");  
-	fwrite(out,sizeof(char),strlen(out),write_ptr); 
-	fclose(write_ptr);
+	write_ptr = fopen(filename,"w"); 
+
+	if (write_ptr != NULL)
+	{
+		fwrite(out,sizeof(char),strlen(out),write_ptr); 
+		fclose(write_ptr);
+	}
 }
 
 void print_block(unsigned char * left, unsigned char * right)

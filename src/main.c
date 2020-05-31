@@ -111,15 +111,18 @@ int main(int argc, char * argv[])
 		}
 	}
 
+	//TODO: allocate exactly the space needed
 	data = (unsigned char *)calloc (100000, sizeof(char));
 	if (read_from_file(data, infile) == -1)
 	{
-		printf("\nInput file not found!");
+		printf("\nInput file not found!\n");
 		return -1;
 	}
 
-	result = feistel(data, key, chosen, to_do);
+	if (to_do == enc) result = feistel_encrypt(data, key, chosen);
+	if (to_do == dec) result = feistel_decrypt(data, key, chosen);
 	free(data);
+	if (to_do == dec) remove_padding(result);
 	print_to_file(result, outfile);
 
 	return 0;
