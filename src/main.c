@@ -40,6 +40,7 @@ int main(int argc, char * argv[])
 			{
 				key = calloc (KEYSIZE, sizeof(char));
 				strncpy(key, argv[i+1], KEYSIZE);
+				i++;
 			} 
 			else
 			{
@@ -92,6 +93,11 @@ int main(int argc, char * argv[])
 					chosen = cbc;
 					i++;
 				}
+				else if (strcmp(argv[i+1], "ctr") == 0) 
+				{
+					chosen = ctr;
+					i++;
+				}
 				else
 				{
 					printf("\nEnter a valid mode of operation (ecb/cbc)\n");
@@ -122,6 +128,7 @@ int main(int argc, char * argv[])
 	if (to_do == enc) result = feistel_encrypt(data, key, chosen);
 	if (to_do == dec) result = feistel_decrypt(data, key, chosen);
 	free(data);
+
 	if (to_do == dec) remove_padding(result);
 	print_to_file(result, outfile);
 
