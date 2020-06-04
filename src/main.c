@@ -100,7 +100,7 @@ int main(int argc, char * argv[])
 				}
 				else
 				{
-					printf("\nEnter a valid mode of operation (ecb/cbc)\n");
+					printf("\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
 					return -1;
 				}
 			} 
