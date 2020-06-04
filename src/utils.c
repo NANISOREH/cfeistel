@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdlib.h"
+#include "ctype.h"
 #include "feistel.h"
 
 int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
@@ -48,7 +49,8 @@ void remove_padding(unsigned char * result)
 	unsigned long size;
 	sscanf(last_block, "%lu", &size);
 
-	for (unsigned long i = size; i<strlen(result); i++) result[i] = '\0';
+	for (unsigned long i = size; i<strlen(result); i++) 
+		result[i] = '\0';
 }
 
 void print_to_file(unsigned char * out, char * filename)
@@ -111,4 +113,46 @@ int read_from_file(unsigned char * buffer, char * filename)
 	}
 	else
 		return -1;
+}
+
+void stringify_counter(unsigned char * string, int counter)
+{
+	int num_digits = 0;
+	memset(string, 35, BLOCKSIZE/2);
+	sprintf(string, "%d", counter);
+
+	for (int i=0; i<BLOCKSIZE/2; i++)
+	{
+		if (string[i]!='\0')
+		{
+			if (isdigit(string[i]))
+				num_digits++;
+			else 
+				break;
+		}
+		else
+			break;
+	}
+
+	for (int j=0; j<(BLOCKSIZE/2); j++)
+	{
+		if (j<num_digits)
+		{
+			string[j + (BLOCKSIZE/2) - num_digits - 1] = string[j];
+		}
+		else
+			string[j] = '=';
+	}
+}
+
+void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_first, unsigned int pos_second)
+{
+	if (pos_first > 7 || pos_second > 7)
+		return;
+
+	unsigned char first_bit = (*first >> pos_first) & 1U;
+	unsigned char second_bit = (*second >> pos_second) & 1U;
+
+	*second = (*second & ~(1UL << pos_second)) | (first_bit << pos_second);
+	*first = (*first & ~(1UL << pos_first)) | (second_bit << pos_first);
 }

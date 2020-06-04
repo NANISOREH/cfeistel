@@ -46,7 +46,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 			}
 
 			bcount++;
-			if (bcount==data_len/BLOCKSIZE)		//we formed the right number of blocks, break the cycle
+			if (bcount==data_len/BLOCKSIZE)		//formed the right number of blocks, break the cycle
 				break;
         }
     }
@@ -70,7 +70,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 		bcount++;
     }
 
-    //we append a block with the real(unpadded) size of the encrypted data
+    //appending a final block with the real(unpadded) size of the encrypted data
     int flag = 0;
    	memcpy(&b[bcount], &last_block, sizeof(block));
    	for (int i=0; i<BLOCKSIZE; i++)
@@ -85,8 +85,10 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 
     if (chosen == cbc)
     	return encrypt_cbc_mode(b, bcount, round_keys);
-    if (chosen == ecb)
+    else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
+    else if (chosen == ctr)
+    	return operate_ctr_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -102,7 +104,7 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 	int bcount=0;
 
 	schedule_key(round_keys, key);	//see the function schedule_key for info
-	reverse_keys(round_keys);	//round keys sequence has to be inverted for decryption
+	if (chosen != ctr)reverse_keys(round_keys);	//round keys sequence has to be inverted for decryption, except for ctr mode
 
 	//allocating space for the blocks. 
 	block * b;
@@ -129,14 +131,12 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
         }
     }
 
-    //we read the size of the data to read before reaching the padding in the last block
-    block last_block;
-	printf("\nLAST BLOCK %s\n", b[bcount-1].left);
-
     if (chosen == cbc)
     	return decrypt_cbc_mode(b, bcount, round_keys);
-    if (chosen == ecb)
+    else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
+    else if (chosen == ctr)
+    	return operate_ctr_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -194,6 +194,66 @@ unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[N
 		printf("---------- AFTER ------------");
 		print_block(b[bcount].left, b[bcount].right);
 		
+		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
+		bcount++;
+	}
+
+	return ciphertext;
+}
+
+//Executes the cipher in CTR mode; takes a block array and the round keys, returns processed data.
+unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
+{
+	unsigned char * ciphertext;
+	int bcount=0;
+
+	//using the checksum of the master key as starting point for the counter
+	unsigned long counter = 0;
+	for (int j=0; j<KEYSIZE; j++)
+		counter = counter + round_keys[0][j];
+
+	//deriving the nonce from the master key (i'm once again recycling the s-box to do that)
+	unsigned char nonce[KEYSIZE];
+	strncpy(nonce, round_keys[0], KEYSIZE); //nonce starts off with the first round key
+	unsigned char left_part;
+	unsigned char right_part;
+	for (int i = 0; i<KEYSIZE; i++) //every byte goes through the s-box
+	{
+		split_byte(&left_part, &right_part, nonce[i]);
+		s_box(&right_part);
+		s_box(&left_part);
+		merge_byte(&nonce[i], left_part, right_part);
+	}
+	
+	block counter_block;
+	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+
+	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
+	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	{
+		//initializing the counter block for this iteration, using fixed values as of now
+		//I think I'll derive the nonce value from the key
+		strcpy(counter_block.left, nonce);
+		stringify_counter(counter_block.right, counter);
+
+		printf("counter block initialized with: %.16s\n", counter_block.left);
+
+		printf("\n\n\nblock %d (CTR)", bcount);
+		printf("\n---------- BEFORE -----------");
+		print_block(b[bcount].left, b[bcount].right);
+		
+		//applying the cipher on the counter block and incrementing the counter
+		feistel_block(counter_block.left, counter_block.right, round_keys);
+		counter++;
+
+		//xor between the ciphered counter block and the current block of plaintext/ciphertext
+		half_block_xor(b[bcount].left, b[bcount].left, counter_block.left);
+		half_block_xor(b[bcount].right, b[bcount].right, counter_block.right);
+		
+		printf("---------- AFTER ------------");
+		print_block(b[bcount].left, b[bcount].right);
+		
+		//storing the result of the xor in the output variable
 		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
 		bcount++;
 	}
@@ -311,14 +371,14 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char ro
 
 	for (int i=0; i<NROUND; i++)	//execution of NROUND cipher rounds on the block
 	{
-
 		strncpy(templeft, left, BLOCKSIZE/2);
 
 		strncpy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round 
 		sp_network(right, round_keys[i]);	//f(right)
 		half_block_xor(right, templeft, right);	  //f(right) XOR left 
 	}
-	
+
+
 	//final inversion of left and right parts of the block after the last round
 	strncpy(templeft, left, BLOCKSIZE/2);
 	strncpy(left, right, BLOCKSIZE/2);
@@ -345,21 +405,7 @@ void sp_network(unsigned char * data, unsigned char * key)
 		merge_byte(&data[i], left_part, right_part);
 	}
 
-	//Permutations, or kind of. I'm just moving whole bytes around, it would be better to find a way to
-	//move single bits all across the block.
-	unsigned char temp;
-	temp = data[0];
-	data[0] = data[7];
-	data[7] = temp;
-	temp = data[1];
-	data[1] =data[4];
-	data[4] = temp;
-	temp = data[2];
-	data[2] = data[5];
-	data[5] = temp;
-	temp = data[3];
-	data[3] = data[6];
-	data[6] = temp;
+	p_box(data);
 }
 
 //4-bit substitution box
@@ -385,4 +431,44 @@ void s_box(unsigned char * byte)
 		case 15: *byte = 13; break;
 	}
 
+}
+
+//64-bit permutation box
+void p_box(unsigned char * data)
+{
+	swap_bit(&data[0], &data[7], 2, 4);
+	swap_bit(&data[0], &data[7], 1, 6);
+	swap_bit(&data[0], &data[7], 7, 5);
+	swap_bit(&data[0], &data[7], 3, 7);
+	swap_bit(&data[0], &data[7], 0, 1);
+	swap_bit(&data[0], &data[7], 4, 0);
+	swap_bit(&data[0], &data[7], 5, 3);
+	swap_bit(&data[0], &data[7], 6, 2);
+
+	swap_bit(&data[1], &data[4], 0, 4);
+	swap_bit(&data[1], &data[4], 1, 6);
+	swap_bit(&data[1], &data[4], 2, 5);
+	swap_bit(&data[1], &data[4], 3, 7);
+	swap_bit(&data[1], &data[4], 4, 1);
+	swap_bit(&data[1], &data[4], 5, 0);
+	swap_bit(&data[1], &data[4], 6, 3);
+	swap_bit(&data[1], &data[4], 7, 2);
+
+	swap_bit(&data[2], &data[5], 7, 4);
+	swap_bit(&data[2], &data[5], 6, 6);
+	swap_bit(&data[2], &data[5], 5, 5);
+	swap_bit(&data[2], &data[5], 4, 7);
+	swap_bit(&data[2], &data[5], 3, 1);
+	swap_bit(&data[2], &data[5], 2, 0);
+	swap_bit(&data[2], &data[5], 1, 3);
+	swap_bit(&data[2], &data[5], 0, 2);
+
+	swap_bit(&data[3], &data[6], 5, 4);
+	swap_bit(&data[3], &data[6], 2, 6);
+	swap_bit(&data[3], &data[6], 3, 5);
+	swap_bit(&data[3], &data[6], 1, 7);
+	swap_bit(&data[3], &data[6], 7, 1);
+	swap_bit(&data[3], &data[6], 6, 0);
+	swap_bit(&data[3], &data[6], 4, 3);
+	swap_bit(&data[3], &data[6], 0, 2);
 }
