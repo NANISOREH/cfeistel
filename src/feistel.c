@@ -231,12 +231,9 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
 	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
-		//initializing the counter block for this iteration, using fixed values as of now
-		//I think I'll derive the nonce value from the key
+		//initializing the counter block for this iteration
 		strcpy(counter_block.left, nonce);
 		stringify_counter(counter_block.right, counter);
-
-		printf("counter block initialized with: %.16s\n", counter_block.left);
 
 		printf("\n\n\nblock %d (CTR)", bcount);
 		printf("\n---------- BEFORE -----------");
