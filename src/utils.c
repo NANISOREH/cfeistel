@@ -3,10 +3,7 @@
 #include "stdlib.h"
 #include "ctype.h"
 #include "feistel.h"
-
-void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size);
-void str_safe_print(unsigned char * to_print, unsigned long size);
-unsigned long str_safe_len(unsigned char * string);
+#include "utils.h"
 
 //Does bitwise xor between two block halves
 int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
@@ -17,20 +14,6 @@ int half_block_xor(unsigned char * result, unsigned char * first, unsigned char 
 	}
 
 	return 1;
-}
-
-//Reverses the order of the string array containing the round keys
-void reverse_keys(unsigned char keys[NROUND][KEYSIZE])
-{
-	unsigned char temp[NROUND][KEYSIZE];
-	memcpy(temp, keys, NROUND * KEYSIZE);
-	int j=NROUND-1;
-
-	for (int i=0; i<NROUND; i++)
-	{
-		str_safe_copy(keys[i], temp[j], NROUND);
-		j--;
-	}
 }
 
 //Prints a byte as a binary string
@@ -86,7 +69,6 @@ void print_to_file(unsigned char * out, char * filename, int size)
 {
 	FILE *write_ptr;
 	write_ptr = fopen(filename,"wb");
-	str_safe_print(out, size);
 
 	if (write_ptr != NULL)
 	{
@@ -116,7 +98,7 @@ void print_block(unsigned char * left, unsigned char * right)
 //Splits the character in the 'whole' parameter in two binary strings representing respectively
 //the 4 most significant bits and the 4 least significant bits of the character fiven 
 //Es. split_byte(left_part, right_part, 01001101) --> left_part = 01000000; right_part = 00001101
-unsigned char split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole)
+void split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole)
 {
 	*right_part = whole;
 	*left_part = whole;
@@ -196,16 +178,16 @@ void str_safe_print(unsigned char * to_print, unsigned long size)
 	printf("\n");
 }
 
-//Basicly strlen but it stops at the second null character instead of the first
+//Basicly strlen but it stops at the third null character instead of the first
 unsigned long str_safe_len(unsigned char * string)
 {
 	unsigned long len=0;
-	for (int i=0; i<100000; i++)
+	for (int i=0; i<BUFSIZE; i++)
 	{
 		len = i;
 		if (string[i]==0)
 		{
-			if (i<99999 && string[i+1]==0)
+			if (i<BUFSIZE - 2 && string[i+1]==0 && string[i+2]==0)
 				break;
 		}
 	}

@@ -119,7 +119,7 @@ int main(int argc, char * argv[])
 		}
 	}
 
-	data = (unsigned char *)calloc (100000, sizeof(char));
+	data = (unsigned char *)calloc (BUFSIZE, sizeof(char));
 	if (read_from_file(data, infile) == -1)
 	{
 		printf("\nInput file not found!\n");

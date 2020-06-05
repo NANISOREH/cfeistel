@@ -101,11 +101,22 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
+	unsigned char temp[NROUND][KEYSIZE];
 	int i=0;
 	int bcount=0;
 
 	schedule_key(round_keys, key);	//see the function schedule_key for info
-	if (chosen != ctr)reverse_keys(round_keys);	//round keys sequence has to be inverted for decryption, except for ctr mode
+	if (chosen != ctr) //round keys sequence has to be inverted for decryption, except for ctr mode
+	{
+		memcpy(temp, round_keys, NROUND * KEYSIZE);
+		int j=NROUND-1;
+
+		for (int i=0; i<NROUND; i++)
+		{
+			str_safe_copy(round_keys[i], temp[j], NROUND);
+			j--;
+		}
+	}
 
 	//allocating space for the blocks. 
 	block * b;
@@ -392,8 +403,6 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char ro
 	str_safe_copy(templeft, left, BLOCKSIZE/2);
 	str_safe_copy(left, right, BLOCKSIZE/2);
 	str_safe_copy(right, templeft, BLOCKSIZE/2);
-
-	printf("\n\n\n");
 }
 
 //"f" function of the feistel cipher. Contains a VERY basic SP network. 
