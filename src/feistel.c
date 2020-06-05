@@ -7,7 +7,8 @@
 //handles input data, starts execution of the cipher in encryption mode, returns the result
 unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum mode chosen)
 {
-	unsigned long data_len = strlen(data);
+	unsigned long data_len = str_safe_len(data);
+	str_safe_print(data, data_len);
 	
 	//if the size of the input data is not multiple of the block size,
 	//remainder will be the number of leftover bytes that will go into the last padded block
@@ -96,7 +97,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 //handles input data, starts execution of the cipher in decryption mode, returns the result
 unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum mode chosen)
 {
-	unsigned long data_len = strlen(data);
+	unsigned long data_len = str_safe_len(data);
 
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -110,7 +111,7 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 	block * b;
 	b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));		
 
-	while (i < strlen(data))	//forming the blocks from the input data
+	while (i < str_safe_len(data))	//forming the blocks from the input data
     {
         buffer[i % BLOCKSIZE] = data[i];
         i++;
@@ -259,8 +260,6 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 		//storing the result of the xor in the output variable
 		for (int j=0; j<BLOCKSIZE; j++)	
 		{
-			if (b[bcount].left[j] == '\0')
-				b[bcount].left[j] = '#';
 			ciphertext[i+j] = b[bcount].left[j];
 		}
 		bcount++;
@@ -395,18 +394,6 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char ro
 	str_safe_copy(right, templeft, BLOCKSIZE/2);
 
 	printf("\n\n\n");
-
-	for (int i = 0; i<BLOCKSIZE/2; i++)
-	{
-		if (left[i] == 0)
-		{
-			printf("trovato un vuoto a sinistra\n");
-		}
-		if (right[i] == 0)
-		{
-			printf("trovato un vuoto a destra\n");
-		}
-	}
 }
 
 //"f" function of the feistel cipher. Contains a VERY basic SP network. 

@@ -5,6 +5,8 @@
 #include "feistel.h"
 
 void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size);
+void str_safe_print(unsigned char * to_print, unsigned long size);
+unsigned long str_safe_len(unsigned char * string);
 
 //Does bitwise xor between two block halves
 int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
@@ -12,11 +14,6 @@ int half_block_xor(unsigned char * result, unsigned char * first, unsigned char 
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{
 		result[i] = first[i] ^ second[i];
-		if (result[i] == 0)
-		{
-			printf("trovato un vuoto nello xor\n");
-			//result[i] = '#'; //shouldn't happen
-		}
 	}
 
 	return 1;
@@ -50,7 +47,7 @@ void print_byte(char c)
 //and cutting the result as necessary. Returns the size read from the last block.
 unsigned long remove_padding(unsigned char * result)
 {
-	int index = strlen(result) - BLOCKSIZE;
+	int index = str_safe_len(result) - BLOCKSIZE;
 	unsigned char last_block[BLOCKSIZE];
 	for (int i = 0; i<BLOCKSIZE; i++)
 	{
@@ -67,15 +64,33 @@ unsigned long remove_padding(unsigned char * result)
 	return size;
 }
 
+//Reads the input file, copies it into a 100000 bytes buffer.
+int read_from_file(unsigned char * buffer, char * filename)
+{
+	FILE *ptr;
+	ptr = fopen(filename,"rb");
+
+	int length; 
+	if (ptr != NULL)
+	{
+		length = fread(buffer,sizeof(char),100000,ptr); 
+		buffer[length++] = '\0';
+		fclose(ptr);
+	}
+	else
+		return -1;
+}
+
 //Prints the result of the program into the output file
 void print_to_file(unsigned char * out, char * filename, int size)
 {
 	FILE *write_ptr;
-	write_ptr = fopen(filename,"w");
+	write_ptr = fopen(filename,"wb");
+	str_safe_print(out, size);
 
 	if (write_ptr != NULL)
 	{
-		fwrite(out,sizeof(char),size,write_ptr); 
+		fwrite(out,size,1,write_ptr); 
 		fclose(write_ptr);
 	}
 }
@@ -117,29 +132,6 @@ void merge_byte(unsigned char * target, unsigned char left_part, unsigned char r
 {
 	left_part = left_part <<(BLOCKSIZE/4);
 	*target = right_part | left_part;
-
-	if (*target == 0)
-	{
-		*target = '#';
-	}
-}
-
-//Reads the input file, copies it into a 100000 bytes buffer.
-int read_from_file(unsigned char * buffer, char * filename)
-{
-	FILE *ptr;
-	ptr = fopen(filename,"r");
-
-	int length;  
-
-	if (ptr != NULL)
-	{
-		length = fread(buffer,sizeof(char),100000,ptr); 
-		buffer[length++] = '\0';
-		fclose(ptr);
-	}
-	else
-		return -1;
 }
 
 //Makes a string out of the counter int, padding it to the right to make it 8 bytes long.
@@ -193,4 +185,30 @@ void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size
 {
 	for (int i=0; i<size; i++)
 		dest[i] = src[i];
+}
+
+//Printf wrapper that ignores '\0' null characters.
+void str_safe_print(unsigned char * to_print, unsigned long size)
+{
+	printf("\n");
+	for (int i=0; i<size; i++)
+		printf("%c", to_print[i]);
+	printf("\n");
+}
+
+//Basicly strlen but it stops at the second null character instead of the first
+unsigned long str_safe_len(unsigned char * string)
+{
+	unsigned long len=0;
+	for (int i=0; i<100000; i++)
+	{
+		len = i;
+		if (string[i]==0)
+		{
+			if (i<99999 && string[i+1]==0)
+				break;
+		}
+	}
+	
+	return len;
 }
