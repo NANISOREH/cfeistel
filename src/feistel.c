@@ -51,7 +51,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
         }
     }
 
-    if (remainder>0)	//forming the last 0-padded block, if there's leftover data
+    if (remainder>0)	//forming the last padded block, if there's leftover data
     {
     	for (int z=0; z<BLOCKSIZE; z++)	
     	{
@@ -79,7 +79,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
    			flag = 1;
 
    		if (flag == 1)
-   			b[bcount].left[i]='=';
+   			b[bcount].left[i]='#';
    	}
     bcount++;
 
@@ -153,7 +153,7 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 	{
 		if (j == 0)	//first round key, the 8 bytes given as master key are used directly
 		{
-			strncpy(round_keys[0], master_key, KEYSIZE);
+			str_safe_copy(round_keys[0], master_key, KEYSIZE);
 		}
 		
 		//very basic key extension schedule: the first byte is discarded, the rest of them shift to the left 
@@ -169,20 +169,18 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 			}
 			//the altered key generated in the iteration j is saved as round key number j,
 			//the final result is an extended key stored in the round_keys matrix
-			strncpy(round_keys[j], master_key, KEYSIZE);
+			str_safe_copy(round_keys[j], master_key, KEYSIZE);
 		} 
 	}
 }
 
 //Executes the cipher in ECB mode; takes a block array and the round keys, returns processed data.
-//it's a bit of a bad ECB, which is amazing, given how ECB is already conceptually bad.
-//Thing is, you can't even take advantage of how multithreadable ECB is since i'm not handling concurrency at all
-//and that would literally be the only upside of ECB. ¯\_(ツ)_/¯
 unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
 	int bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	printf("%s\n", b[0].left);
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
 	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
@@ -190,11 +188,19 @@ unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[N
 		printf("\n\n\nblock %d (ECB)", bcount);
 		printf("\n---------- BEFORE -----------");
 		print_block(b[bcount].left, b[bcount].right);
+		
+		//applying the cipher on the current block
 		feistel_block(b[bcount].left, b[bcount].right, round_keys);
+		
 		printf("---------- AFTER ------------");
 		print_block(b[bcount].left, b[bcount].right);
 		
-		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
+		//storing the result in the ciphertext variable
+		for (int j=0; j<BLOCKSIZE; j++)	
+		{
+			ciphertext[i+j] = b[bcount].left[j];
+		}
+		
 		bcount++;
 	}
 
@@ -214,7 +220,7 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 
 	//deriving the nonce from the master key (i'm once again recycling the s-box to do that)
 	unsigned char nonce[KEYSIZE];
-	strncpy(nonce, round_keys[0], KEYSIZE); //nonce starts off with the first round key
+	str_safe_copy(nonce, round_keys[0], KEYSIZE); //nonce starts off with the first round key
 	unsigned char left_part;
 	unsigned char right_part;
 	for (int i = 0; i<KEYSIZE; i++) //every byte goes through the s-box
@@ -232,7 +238,7 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
 		//initializing the counter block for this iteration
-		strcpy(counter_block.left, nonce);
+		str_safe_copy(counter_block.left, nonce, BLOCKSIZE/2);
 		stringify_counter(counter_block.right, counter);
 
 		printf("\n\n\nblock %d (CTR)", bcount);
@@ -251,7 +257,12 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 		print_block(b[bcount].left, b[bcount].right);
 		
 		//storing the result of the xor in the output variable
-		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
+		for (int j=0; j<BLOCKSIZE; j++)	
+		{
+			if (b[bcount].left[j] == '\0')
+				b[bcount].left[j] = '#';
+			ciphertext[i+j] = b[bcount].left[j];
+		}
 		bcount++;
 	}
 
@@ -294,7 +305,10 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 		memcpy(&prev_ciphertext, &b[bcount], sizeof(block));
 		
 		//storing the ciphered block in the ciphertext variable
-		for (int j=0; j<BLOCKSIZE; j++)	ciphertext[i+j] = b[bcount].left[j];
+		for (int j=0; j<BLOCKSIZE; j++)	
+		{
+			ciphertext[i+j] = b[bcount].left[j];
+		}
 		bcount++;
 	}
 
@@ -368,18 +382,31 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char ro
 
 	for (int i=0; i<NROUND; i++)	//execution of NROUND cipher rounds on the block
 	{
-		strncpy(templeft, left, BLOCKSIZE/2);
+		str_safe_copy(templeft, left, BLOCKSIZE/2);
 
-		strncpy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round 
+		str_safe_copy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round 
 		sp_network(right, round_keys[i]);	//f(right)
 		half_block_xor(right, templeft, right);	  //f(right) XOR left 
 	}
 
-
 	//final inversion of left and right parts of the block after the last round
-	strncpy(templeft, left, BLOCKSIZE/2);
-	strncpy(left, right, BLOCKSIZE/2);
-	strncpy(right, templeft, BLOCKSIZE/2);
+	str_safe_copy(templeft, left, BLOCKSIZE/2);
+	str_safe_copy(left, right, BLOCKSIZE/2);
+	str_safe_copy(right, templeft, BLOCKSIZE/2);
+
+	printf("\n\n\n");
+
+	for (int i = 0; i<BLOCKSIZE/2; i++)
+	{
+		if (left[i] == 0)
+		{
+			printf("trovato un vuoto a sinistra\n");
+		}
+		if (right[i] == 0)
+		{
+			printf("trovato un vuoto a destra\n");
+		}
+	}
 }
 
 //"f" function of the feistel cipher. Contains a VERY basic SP network. 
@@ -402,6 +429,7 @@ void sp_network(unsigned char * data, unsigned char * key)
 		merge_byte(&data[i], left_part, right_part);
 	}
 
+	//feeding data to the permutation box, where bits will get swapped all around
 	p_box(data);
 }
 

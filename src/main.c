@@ -12,8 +12,9 @@ int main(int argc, char * argv[])
 	unsigned char * data;
 	unsigned char * key;
 	key = calloc (KEYSIZE, sizeof(char));
-	strncpy(key, "defaultk", KEYSIZE);
+	strncpy(key, "^&#*$(#)$", KEYSIZE);
 	unsigned char * result;
+	int num_blocks;
 	char * infile = "in";
 	char * outfile = "out";
 
@@ -125,12 +126,29 @@ int main(int argc, char * argv[])
 		return -1;
 	}
 
-	if (to_do == enc) result = feistel_encrypt(data, key, chosen);
-	if (to_do == dec) result = feistel_decrypt(data, key, chosen);
-	free(data);
+	//figuring out the number of blocks to write in case it's an encryption
+	//note: I can't do it after encryption because some letter in the ciphertext might become '\0'
+	//and that would lead to only print part of the original text
+	num_blocks = strlen(data)/BLOCKSIZE;
+	if (to_do == enc && strlen(data) % BLOCKSIZE == 0)	
+		num_blocks++;
+	else if(to_do == enc)
+		num_blocks+=2;
 
-	if (to_do == dec) remove_padding(result);
-	print_to_file(result, outfile);
+	//starting the correct operation
+	if (to_do == enc) result = feistel_encrypt(data, key, chosen);
+	else if (to_do == dec) result = feistel_decrypt(data, key, chosen);
+	free(data);
+	
+	//figuring out the final size of the output and printing to file 
+	unsigned long size;
+	if (to_do == dec) //using the size written in the last block (returned by remove_padding) to determine how much text to write
+	{ 
+		size = remove_padding(result);
+		print_to_file(result, outfile, size);
+	}
+	else //using the number of blocks calculated before to determine how much text to write
+		print_to_file(result, outfile, num_blocks * BLOCKSIZE);
 
 	return 0;
 }

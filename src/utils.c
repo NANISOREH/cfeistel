@@ -4,12 +4,19 @@
 #include "ctype.h"
 #include "feistel.h"
 
+void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size);
+
 //Does bitwise xor between two block halves
 int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
 {
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{
 		result[i] = first[i] ^ second[i];
+		if (result[i] == 0)
+		{
+			printf("trovato un vuoto nello xor\n");
+			//result[i] = '#'; //shouldn't happen
+		}
 	}
 
 	return 1;
@@ -24,7 +31,7 @@ void reverse_keys(unsigned char keys[NROUND][KEYSIZE])
 
 	for (int i=0; i<NROUND; i++)
 	{
-		strncpy(keys[i], temp[j], NROUND);
+		str_safe_copy(keys[i], temp[j], NROUND);
 		j--;
 	}
 }
@@ -40,8 +47,8 @@ void print_byte(char c)
 }
 
 //Removes the padding from the padded block after decryption, by reading the size from the last block 
-//and cutting the result as necessary.
-void remove_padding(unsigned char * result)
+//and cutting the result as necessary. Returns the size read from the last block.
+unsigned long remove_padding(unsigned char * result)
 {
 	int index = strlen(result) - BLOCKSIZE;
 	unsigned char last_block[BLOCKSIZE];
@@ -56,17 +63,19 @@ void remove_padding(unsigned char * result)
 
 	for (unsigned long i = size; i<strlen(result); i++) 
 		result[i] = '\0';
+
+	return size;
 }
 
 //Prints the result of the program into the output file
-void print_to_file(unsigned char * out, char * filename)
+void print_to_file(unsigned char * out, char * filename, int size)
 {
 	FILE *write_ptr;
-	write_ptr = fopen(filename,"w"); 
+	write_ptr = fopen(filename,"w");
 
 	if (write_ptr != NULL)
 	{
-		fwrite(out,sizeof(char),strlen(out),write_ptr); 
+		fwrite(out,sizeof(char),size,write_ptr); 
 		fclose(write_ptr);
 	}
 }
@@ -108,6 +117,11 @@ void merge_byte(unsigned char * target, unsigned char left_part, unsigned char r
 {
 	left_part = left_part <<(BLOCKSIZE/4);
 	*target = right_part | left_part;
+
+	if (*target == 0)
+	{
+		*target = '#';
+	}
 }
 
 //Reads the input file, copies it into a 100000 bytes buffer.
@@ -172,4 +186,11 @@ void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_fi
 
 	*second = (*second & ~(1UL << pos_second)) | (first_bit << pos_second);
 	*first = (*first & ~(1UL << pos_first)) | (second_bit << pos_first);
+}
+
+//Basicly strncpy but it ignores '\0' null characters.
+void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size)
+{
+	for (int i=0; i<size; i++)
+		dest[i] = src[i];
 }
