@@ -12,7 +12,7 @@ int main(int argc, char * argv[])
 	unsigned char * data;
 	unsigned char * key;
 	key = calloc (KEYSIZE, sizeof(char));
-	strncpy(key, "12345678", KEYSIZE);
+	strncpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	int num_blocks;
 	char * infile = "in";
@@ -112,6 +112,10 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
+		else if (strcmp(argv[i], "-s") == 0)
+		{
+			fclose(stdout);
+		}
 		else
 		{
 			printf("\nUnknown parameter '%s'\n", argv[i]);
@@ -119,13 +123,15 @@ int main(int argc, char * argv[])
 		}
 	}
 
-	data = (unsigned char *)calloc (BUFSIZE, sizeof(char));
+	data = (unsigned char *)calloc (BUFSIZE, sizeof(unsigned char));
 	if (read_from_file(data, infile) == -1)
 	{
 		printf("\nInput file not found!\n");
 		return -1;
 	}
 
+	//TODO: move this last part to feistel.c
+	
 	//figuring out the number of blocks to write in case it's an encryption
 	num_blocks = str_safe_len(data)/BLOCKSIZE;
 	if (to_do == enc && str_safe_len(data) % BLOCKSIZE == 0)	
@@ -142,7 +148,7 @@ int main(int argc, char * argv[])
 	unsigned long size;
 	if (to_do == dec) //using the size written in the last block (returned by remove_padding) to determine how much text to write
 	{ 
-		size = remove_padding(result);
+		size = remove_padding(result, num_blocks);
 		print_to_file(result, outfile, size);
 	}
 	else //using the number of blocks calculated before to determine how much text to write
