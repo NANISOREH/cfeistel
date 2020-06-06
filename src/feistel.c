@@ -7,9 +7,7 @@
 //handles input data, starts execution of the cipher in encryption mode, returns the result
 unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum mode chosen)
 {
-	unsigned long data_len = str_safe_len(data);
-	str_safe_print(data, data_len);
-	
+	unsigned long data_len = str_safe_len(data);	
 	//if the size of the input data is not multiple of the block size,
 	//remainder will be the number of leftover bytes that will go into the last padded block
 	int remainder = data_len % BLOCKSIZE;	
@@ -31,7 +29,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 	else					//data size is not multiple of the blocksize, we need an extra block
 		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 2, sizeof(block));	
 
-	while (i < strlen(data))	//forming the blocks from the input data
+	while (i < data_len)	//forming the blocks from the input data
     {
         buffer[i % BLOCKSIZE] = data[i];
         i++;
@@ -122,7 +120,7 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 	block * b;
 	b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));		
 
-	while (i < str_safe_len(data))	//forming the blocks from the input data
+	while (i < data_len)	//forming the blocks from the input data
     {
         buffer[i % BLOCKSIZE] = data[i];
         i++;
@@ -153,37 +151,30 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
     return NULL;
 }
 
-//Schedules the round keys by extending the 8 bytes given in input, which are directly used for the first round
+//Schedules the round keys by extending the 8 bytes given in input
 void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key)
 {
 	unsigned char left_part;
 	unsigned char right_part;
 	unsigned char master_key[KEYSIZE];
 	memcpy(master_key, key, KEYSIZE);
+	str_safe_copy(round_keys[0], master_key, KEYSIZE);
 
 	for (int j = 0; j<NROUND; j++)
 	{
-		if (j == 0)	//first round key, the 8 bytes given as master key are used directly
-		{
-			str_safe_copy(round_keys[0], master_key, KEYSIZE);
+		for (int i = 0; i<KEYSIZE; i++) 
+		{			
+			master_key[i] = (master_key[i] + 30 - i) % 256;	
+			split_byte(&left_part, &right_part, master_key[i]);
+			merge_byte(&master_key[i], right_part, left_part);
 		}
+		p_box(master_key);
 		
-		//very basic key extension schedule: the first byte is discarded, the rest of them shift to the left 
-		//and a new one is added to the right (i'm recycling the s-box to derive the new byte, might need to do something else)
-		else
-		{
-			for (int i = 1; i<KEYSIZE; i++) 
-			{
-				master_key[i-1] = master_key[i];
-				split_byte(&left_part, &right_part, master_key[KEYSIZE-1]);
-				s_box(&right_part);
-				merge_byte(&master_key[KEYSIZE-1], left_part, right_part);
-			}
-			//the altered key generated in the iteration j is saved as round key number j,
-			//the final result is an extended key stored in the round_keys matrix
-			str_safe_copy(round_keys[j], master_key, KEYSIZE);
-		} 
-	}
+		//the altered key generated in the iteration j is saved as round key number j,
+		//the final result is an extended key stored in the round_keys matrix
+		str_safe_copy(round_keys[j], master_key, KEYSIZE);
+	} 
+
 }
 
 //Executes the cipher in ECB mode; takes a block array and the round keys, returns processed data.
@@ -192,7 +183,6 @@ unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[N
 	unsigned char * ciphertext;
 	int bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
-	printf("%s\n", b[0].left);
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
 	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
@@ -207,7 +197,7 @@ unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[N
 		printf("---------- AFTER ------------");
 		print_block(b[bcount].left, b[bcount].right);
 		
-		//storing the result in the ciphertext variable
+		//appending the result to the ciphertext variable
 		for (int j=0; j<BLOCKSIZE; j++)	
 		{
 			ciphertext[i+j] = b[bcount].left[j];
@@ -230,16 +220,16 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 	for (int j=0; j<KEYSIZE; j++)
 		counter = counter + round_keys[0][j];
 
-	//deriving the nonce from the master key (i'm once again recycling the s-box to do that)
+	//deriving the nonce from the master key (i'm recycling the s-box to do that)
 	unsigned char nonce[KEYSIZE];
-	str_safe_copy(nonce, round_keys[0], KEYSIZE); //nonce starts off with the first round key
+	str_safe_copy(nonce, round_keys[0], KEYSIZE); 
 	unsigned char left_part;
 	unsigned char right_part;
 	for (int i = 0; i<KEYSIZE; i++) //every byte goes through the s-box
 	{
 		split_byte(&left_part, &right_part, nonce[i]);
-		s_box(&right_part);
-		s_box(&left_part);
+		s_box(&right_part, 0);
+		s_box(&left_part, 1);
 		merge_byte(&nonce[i], left_part, right_part);
 	}
 	
@@ -259,7 +249,7 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 		
 		//applying the cipher on the counter block and incrementing the counter
 		feistel_block(counter_block.left, counter_block.right, round_keys);
-		counter++;
+		counter = counter + 1;
 
 		//xor between the ciphered counter block and the current block of plaintext/ciphertext
 		half_block_xor(b[bcount].left, b[bcount].left, counter_block.left);
@@ -384,17 +374,15 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 
 //execution of the cipher for a single block
 void feistel_block(unsigned char * left, unsigned char * right, unsigned char round_keys[NROUND][KEYSIZE]) 
-{
+{	
 	//buffer variable to temporarily store the left part of the block during the round execution
 	unsigned char templeft[BLOCKSIZE/2];
-
-	int checksum=0;
 
 	for (int i=0; i<NROUND; i++)	//execution of NROUND cipher rounds on the block
 	{
 		str_safe_copy(templeft, left, BLOCKSIZE/2);
 
-		str_safe_copy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round 
+		str_safe_copy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round
 		sp_network(right, round_keys[i]);	//f(right)
 		half_block_xor(right, templeft, right);	  //f(right) XOR left 
 	}
@@ -420,8 +408,8 @@ void sp_network(unsigned char * data, unsigned char * key)
 		//Would have been better to leave them in one piece and operate on a 8-bit S-box? Yes.
 		//Do I have better ways to spend my time than writing a 256-entries lookup table? Also yes. Barely, but yes. 
 		split_byte(&left_part, &right_part, data[i]);
-		s_box(&right_part);
-		s_box(&left_part);
+		s_box(&right_part, 0);
+		s_box(&left_part, 1);
 		merge_byte(&data[i], left_part, right_part);
 	}
 
@@ -430,28 +418,52 @@ void sp_network(unsigned char * data, unsigned char * key)
 }
 
 //4-bit substitution box
-void s_box(unsigned char * byte)
+void s_box(unsigned char * byte, int side)
 {
-	switch (*byte)
+	if (side == 0)
+	{	
+		switch (*byte)
+		{
+			case 0:	*byte = 14; break;
+			case 1: *byte = 2; break;
+			case 2: *byte = 9; break;
+			case 3: *byte = 11; break;
+			case 4: *byte = 15; break;
+			case 5:	*byte = 4; break;
+			case 6: *byte = 4; break;
+			case 7: *byte = 3; break;
+			case 8: *byte = 5; break;
+			case 9: *byte = 6; break;
+			case 10: *byte = 11; break;
+			case 11: *byte = 1; break;
+			case 12: *byte = 10; break;
+			case 13: *byte = 8; break;
+			case 14: *byte = 12; break;
+			case 15: *byte = 13; break;
+		}
+	} 
+	else if (side == 1)
 	{
-		case 0:	*byte = 14; break;
-		case 1: *byte = 2; break;
-		case 2: *byte = 9; break;
-		case 3: *byte = 11; break;
-		case 4: *byte = 15; break;
-		case 5:	*byte = 0; break;
-		case 6: *byte = 4; break;
-		case 7: *byte = 3; break;
-		case 8: *byte = 5; break;
-		case 9: *byte = 6; break;
-		case 10: *byte = 7; break;
-		case 11: *byte = 1; break;
-		case 12: *byte = 10; break;
-		case 13: *byte = 8; break;
-		case 14: *byte = 12; break;
-		case 15: *byte = 13; break;
+		switch (*byte)
+		{
+			case 0:	*byte = 14; break;
+			case 1: *byte = 2; break;
+			case 2: *byte = 9; break;
+			case 3: *byte = 0; break;
+			case 4: *byte = 15; break;
+			case 5:	*byte = 0; break;
+			case 6: *byte = 7; break;
+			case 7: *byte = 3; break;
+			case 8: *byte = 5; break;
+			case 9: *byte = 6; break;
+			case 10: *byte = 7; break;
+			case 11: *byte = 1; break;
+			case 12: *byte = 10; break;
+			case 13: *byte = 8; break;
+			case 14: *byte = 12; break;
+			case 15: *byte = 13; break;
+		}
 	}
-
 }
 
 //64-bit permutation box
@@ -466,14 +478,14 @@ void p_box(unsigned char * data)
 	swap_bit(&data[0], &data[7], 5, 3);
 	swap_bit(&data[0], &data[7], 6, 2);
 
-	swap_bit(&data[1], &data[4], 0, 4);
+	swap_bit(&data[1], &data[4], 0, 7);
 	swap_bit(&data[1], &data[4], 1, 6);
 	swap_bit(&data[1], &data[4], 2, 5);
-	swap_bit(&data[1], &data[4], 3, 7);
-	swap_bit(&data[1], &data[4], 4, 1);
-	swap_bit(&data[1], &data[4], 5, 0);
-	swap_bit(&data[1], &data[4], 6, 3);
-	swap_bit(&data[1], &data[4], 7, 2);
+	swap_bit(&data[1], &data[4], 3, 4);
+	swap_bit(&data[1], &data[4], 4, 3);
+	swap_bit(&data[1], &data[4], 5, 2);
+	swap_bit(&data[1], &data[4], 6, 1);
+	swap_bit(&data[1], &data[4], 7, 0);
 
 	swap_bit(&data[2], &data[5], 7, 4);
 	swap_bit(&data[2], &data[5], 6, 6);

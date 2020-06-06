@@ -28,9 +28,9 @@ void print_byte(char c)
 
 //Removes the padding from the padded block after decryption, by reading the size from the last block 
 //and cutting the result as necessary. Returns the size read from the last block.
-unsigned long remove_padding(unsigned char * result)
+unsigned long remove_padding(unsigned char * result, int num_blocks)
 {
-	int index = str_safe_len(result) - BLOCKSIZE;
+	int index = (num_blocks - 1) * BLOCKSIZE;
 	unsigned char last_block[BLOCKSIZE];
 	for (int i = 0; i<BLOCKSIZE; i++)
 	{
@@ -41,13 +41,13 @@ unsigned long remove_padding(unsigned char * result)
 	unsigned long size;
 	sscanf(last_block, "%lu", &size);
 
-	for (unsigned long i = size; i<strlen(result); i++) 
+	for (unsigned long i = size; i<num_blocks * BLOCKSIZE; i++) 
 		result[i] = '\0';
 
 	return size;
 }
 
-//Reads the input file, copies it into a 100000 bytes buffer.
+//Reads the input file, copies it into a buffer.
 int read_from_file(unsigned char * buffer, char * filename)
 {
 	FILE *ptr;
@@ -56,7 +56,7 @@ int read_from_file(unsigned char * buffer, char * filename)
 	int length; 
 	if (ptr != NULL)
 	{
-		length = fread(buffer,sizeof(char),100000,ptr); 
+		length = fread(buffer,sizeof(char),BUFSIZE,ptr); 
 		buffer[length++] = '\0';
 		fclose(ptr);
 	}
@@ -90,8 +90,9 @@ void print_block(unsigned char * left, unsigned char * right)
 		block_data[j + BLOCKSIZE/2] = right[j];
 	}
 	block_data[BLOCKSIZE] = '\0';
-	printf("\nblock text: %s", block_data);
-	printf("\nblock sum: %llu\n", checksum);
+	printf("\nblock text:");
+	str_safe_print(block_data, BLOCKSIZE);
+	printf("\nblock sum: \n%llu\n", checksum);
 	checksum = 0;
 }
 
@@ -120,15 +121,15 @@ void merge_byte(unsigned char * target, unsigned char left_part, unsigned char r
 //Operates in-place (the string to populate is passed as a pointer to character)
 void stringify_counter(unsigned char * string, int counter)
 {
+	unsigned char number[BLOCKSIZE/2];
 	int num_digits = 0;
-	memset(string, 35, BLOCKSIZE/2);
-	sprintf(string, "%d", counter);
+	sprintf(number, "%d", counter);
 
 	for (int i=0; i<BLOCKSIZE/2; i++)
 	{
-		if (string[i]!='\0')
+		if (number[i]!='\0')
 		{
-			if (isdigit(string[i]))
+			if (isdigit(number[i]))
 				num_digits++;
 			else 
 				break;
@@ -141,7 +142,7 @@ void stringify_counter(unsigned char * string, int counter)
 	{
 		if (j<num_digits)
 		{
-			string[j + (BLOCKSIZE/2) - num_digits - 1] = string[j];
+			string[j] = number[j];
 		}
 		else
 			string[j] = '=';
@@ -175,22 +176,23 @@ void str_safe_print(unsigned char * to_print, unsigned long size)
 	printf("\n");
 	for (int i=0; i<size; i++)
 		printf("%c", to_print[i]);
-	printf("\n");
 }
 
-//Basicly strlen but it stops at the third null character instead of the first
+//Basicly strlen but it doesn't stop counting the length at the first '\0'
 unsigned long str_safe_len(unsigned char * string)
 {
 	unsigned long len=0;
+	int flag=0;
 	for (int i=0; i<BUFSIZE; i++)
 	{
-		len = i;
 		if (string[i]==0)
-		{
-			if (i<BUFSIZE - 2 && string[i+1]==0 && string[i+2]==0)
-				break;
-		}
+			flag=1;
+		else
+			flag=0;
+
+		if (flag==0)
+			len = i + 1;
 	}
-	
+
 	return len;
 }
