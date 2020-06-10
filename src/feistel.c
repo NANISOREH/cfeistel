@@ -337,7 +337,9 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	//making a copy of the whole ciphertext: for cbc decryption you need the ciphertext of the block i-1
 	//to decrypt the block i. Since I'm operating the feistel algorithm in-place I needed to store these ciphertexts in advance.
 	//I should find a more elegant way to do it (like a partial buffer with a bunch of blocks instead of a full-on copy).
-	block blocks_copy[bnum * sizeof(block)];
+	//As it is now, it burns more ram than friggin Chrome.
+	block * blocks_copy;
+	blocks_copy = malloc(bnum * sizeof(block));
 	memcpy(blocks_copy, b, bnum * sizeof(block));
 
 	//initialization vector
