@@ -20,7 +20,7 @@ void feistel_block(unsigned char * left, unsigned char * right, unsigned char ro
 void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key);
 unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum mode chosen);
 unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum mode chosen);
-unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE]);
-unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE]);
-unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE]);
-unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE]);
+unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE]);
+unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE]);
+unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE]);
+unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE]);
