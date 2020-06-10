@@ -28,9 +28,9 @@ void print_byte(char c)
 
 //Removes the padding from the padded block after decryption, by reading the size from the last block 
 //and cutting the result as necessary. Returns the size read from the last block.
-unsigned long remove_padding(unsigned char * result, int num_blocks)
+unsigned long remove_padding(unsigned char * result, unsigned long num_blocks)
 {
-	int index = (num_blocks - 1) * BLOCKSIZE;
+	unsigned long index = (num_blocks - 1) * BLOCKSIZE;
 	unsigned char last_block[BLOCKSIZE];
 	for (int i = 0; i<BLOCKSIZE; i++)
 	{
@@ -53,7 +53,7 @@ int read_from_file(unsigned char * buffer, char * filename)
 	FILE *ptr;
 	ptr = fopen(filename,"rb");
 
-	int length; 
+	unsigned long length; 
 	if (ptr != NULL)
 	{
 		length = fread(buffer,sizeof(char),BUFSIZE,ptr); 
@@ -65,7 +65,7 @@ int read_from_file(unsigned char * buffer, char * filename)
 }
 
 //Prints the result of the program into the output file
-void print_to_file(unsigned char * out, char * filename, int size)
+void print_to_file(unsigned char * out, char * filename, unsigned long size)
 {
 	FILE *write_ptr;
 	write_ptr = fopen(filename,"wb");
@@ -119,11 +119,11 @@ void merge_byte(unsigned char * target, unsigned char left_part, unsigned char r
 
 //Makes a string out of the counter int, padding it to the right to make it 8 bytes long.
 //Operates in-place (the string to populate is passed as a pointer to character)
-void stringify_counter(unsigned char * string, int counter)
+void stringify_counter(unsigned char * string, unsigned long counter)
 {
 	unsigned char number[BLOCKSIZE/2];
 	int num_digits = 0;
-	sprintf(number, "%d", counter);
+	sprintf(number, "%lu", counter);
 
 	for (int i=0; i<BLOCKSIZE/2; i++)
 	{
@@ -166,7 +166,7 @@ void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_fi
 //Basicly strncpy but it ignores '\0' null characters.
 void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size)
 {
-	for (int i=0; i<size; i++)
+	for (long unsigned i=0; i<size; i++)
 		dest[i] = src[i];
 }
 
@@ -178,12 +178,14 @@ void str_safe_print(unsigned char * to_print, unsigned long size)
 		printf("%c", to_print[i]);
 }
 
-//Basicly strlen but it doesn't stop counting the length at the first '\0'
+//Basicly strlen but it doesn't stop counting the length at the first '\0'.
+//Note: still has the problem that it won't count the length correctly if a ciphertext ENDS with '/0'
+//and while it has never happened so far in my test runs, it could theoretically happen.
 unsigned long str_safe_len(unsigned char * string)
 {
 	unsigned long len=0;
 	int flag=0;
-	for (int i=0; i<BUFSIZE; i++)
+	for (unsigned long i=0; i<BUFSIZE; i++)
 	{
 		if (string[i]==0)
 			flag=1;

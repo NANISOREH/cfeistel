@@ -4,7 +4,7 @@
 #include "utils.h"
 #include "feistel.h"
 
-//handles input data, starts execution of the cipher in encryption mode, returns the result
+//handles input data, starts execution of the cipher in encryption mode, returns the result, or NULL if an error is encountered
 unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum mode chosen)
 {
 	unsigned long data_len = str_safe_len(data);	
@@ -13,12 +13,11 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 	int remainder = data_len % BLOCKSIZE;	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
-	int i=0;
-	int bcount=0;
+	unsigned long i=0;
+	unsigned long bcount=0;
 
 	block last_block;
-	snprintf(last_block.left, BLOCKSIZE/2, "%lu", data_len);
-	snprintf(last_block.right, BLOCKSIZE/2, "%lu", 0L);
+	snprintf(last_block.left, BLOCKSIZE, "%lu", data_len);
 
 	schedule_key(round_keys, key);	//see the function schedule_key for info
 
@@ -27,7 +26,9 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 	if (remainder == 0)		//data size is multiple of the blocksize
 		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 1, sizeof(block));		
 	else					//data size is not multiple of the blocksize, we need an extra block
-		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 2, sizeof(block));	
+		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 2, sizeof(block));
+
+	if (b == NULL) return NULL;
 
 	while (i < data_len)	//forming the blocks from the input data
     {
@@ -69,16 +70,18 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 		bcount++;
     }
 
+    free(data);
+
     //appending a final block with the real(unpadded) size of the encrypted data
     int flag = 0;
    	memcpy(&b[bcount], &last_block, sizeof(block));
    	for (int i=0; i<BLOCKSIZE; i++)
    	{
-   		if (b[bcount].left[i] == '\0')
-   			flag = 1;
-
    		if (flag == 1)
    			b[bcount].left[i]='#';
+   		
+   		if (flag==0 && b[bcount].left[i] == '\0')
+   			flag = 1;
    	}
     bcount++;
 
@@ -92,7 +95,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
     return NULL;
 }
 
-//handles input data, starts execution of the cipher in decryption mode, returns the result
+//handles input data, starts execution of the cipher in decryption mode, returns the result, or NULL if an error is encountered
 unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum mode chosen)
 {
 	unsigned long data_len = str_safe_len(data);
@@ -100,8 +103,8 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
 	unsigned char temp[NROUND][KEYSIZE];
-	int i=0;
-	int bcount=0;
+	unsigned long i=0;
+	unsigned long bcount=0;
 
 	schedule_key(round_keys, key);	//see the function schedule_key for info
 	if (chosen != ctr) //round keys sequence has to be inverted for decryption, except for ctr mode
@@ -118,7 +121,8 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 
 	//allocating space for the blocks. 
 	block * b;
-	b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));		
+	b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));
+	if (b == NULL) return NULL;		
 
 	while (i < data_len)	//forming the blocks from the input data
     {
@@ -140,6 +144,8 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum 
 				break;
         }
     }
+
+    free(data);
 
     if (chosen == cbc)
     	return decrypt_cbc_mode(b, bcount, round_keys);
@@ -178,15 +184,16 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 }
 
 //Executes the cipher in ECB mode; takes a block array and the round keys, returns processed data.
-unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
+unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
-	int bcount=0;
+	unsigned long bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
+		//logging (pre-processing)
 		printf("\n\n\nblock %d (ECB)", bcount);
 		printf("\n---------- BEFORE -----------");
 		print_block(b[bcount].left, b[bcount].right);
@@ -194,6 +201,7 @@ unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[N
 		//applying the cipher on the current block
 		feistel_block(b[bcount].left, b[bcount].right, round_keys);
 		
+		//logging (post-processing)
 		printf("---------- AFTER ------------");
 		print_block(b[bcount].left, b[bcount].right);
 		
@@ -210,10 +218,10 @@ unsigned char * operate_ecb_mode(block * b, int bnum, unsigned char round_keys[N
 }
 
 //Executes the cipher in CTR mode; takes a block array and the round keys, returns processed data.
-unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
+unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
-	int bcount=0;
+	unsigned long bcount=0;
 
 	//using the checksum of the master key as starting point for the counter
 	unsigned long counter = 0;
@@ -235,14 +243,16 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 	
 	block counter_block;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	if (ciphertext == NULL) return ciphertext;
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
 		//initializing the counter block for this iteration
 		str_safe_copy(counter_block.left, nonce, BLOCKSIZE/2);
 		stringify_counter(counter_block.right, counter);
 
+		//logging (pre-processing)
 		printf("\n\n\nblock %d (CTR)", bcount);
 		printf("\n---------- BEFORE -----------");
 		print_block(b[bcount].left, b[bcount].right);
@@ -255,11 +265,12 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 		half_block_xor(b[bcount].left, b[bcount].left, counter_block.left);
 		half_block_xor(b[bcount].right, b[bcount].right, counter_block.right);
 		
+		//logging (post-processing)
 		printf("---------- AFTER ------------");
 		print_block(b[bcount].left, b[bcount].right);
 		
 		//storing the result of the xor in the output variable
-		for (int j=0; j<BLOCKSIZE; j++)	
+		for (unsigned long j=0; j<BLOCKSIZE; j++)	
 		{
 			ciphertext[i+j] = b[bcount].left[j];
 		}
@@ -270,10 +281,10 @@ unsigned char * operate_ctr_mode(block * b, int bnum, unsigned char round_keys[N
 }
 
 //Executes encryption in CBC mode; takes a block array and the round keys, returns processed data.
-unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
+unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
-	int bcount=0;
+	unsigned long bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 
 	//prev_ciphertext will start off with the initialization vector, later it will be used in every iteration x 
@@ -286,8 +297,9 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 	}
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
+		//logging (pre-encryption)
 		printf("\n\n\nblock %d (CBC-ENC)", bcount);
 		printf("\n---------- BEFORE -----------");
 		print_block(b[bcount].left, b[bcount].right);
@@ -298,11 +310,11 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
 		feistel_block(b[bcount].left, b[bcount].right, round_keys);
-		
+		memcpy(&prev_ciphertext, &b[bcount], sizeof(block));
+
+		//logging (post-encryption)
 		printf("---------- AFTER ------------");
 		print_block(b[bcount].left, b[bcount].right);
-		
-		memcpy(&prev_ciphertext, &b[bcount], sizeof(block));
 		
 		//storing the ciphered block in the ciphertext variable
 		for (int j=0; j<BLOCKSIZE; j++)	
@@ -316,15 +328,15 @@ unsigned char * encrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 }
 
 //Executes decryption in CBC mode; takes a block array and the round keys, returns processed data.
-unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[NROUND][KEYSIZE])
+unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	int bcount=0;
+	unsigned long bcount=0;
 	unsigned char * plaintext;
 	plaintext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 
-	//making a copy of the whole ciphertext: for cbc decryption you need for each block the ciphertext of the
-	//previous one. Since I'm operating the feistel algorithm in-place I needed to store those in advance.
-	//Later I'll find a more elegant way to do it (like a partial buffer with instead of a full-on copy).
+	//making a copy of the whole ciphertext: for cbc decryption you need the ciphertext of the block i-1
+	//to decrypt the block i. Since I'm operating the feistel algorithm in-place I needed to store these ciphertexts in advance.
+	//I should find a more elegant way to do it (like a partial buffer with a bunch of blocks instead of a full-on copy).
 	block blocks_copy[bnum * sizeof(block)];
 	memcpy(blocks_copy, b, bnum * sizeof(block));
 
@@ -337,15 +349,17 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 	}
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (int i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
 	{
 
 		if (i % BLOCKSIZE == 0 && bcount < bnum) 
 		{
-			//First thing, you run feistel on the block,...
+			//logging (pre-decryption)
 			printf("\n\n\nblock %d (CBC-DEC)", bcount);
 			printf("\n---------- BEFORE -----------");
 			print_block(b[bcount].left, b[bcount].right);
+
+			//First thing, you run feistel on the block,...
 			feistel_block(b[bcount].left, b[bcount].right, round_keys);
 
 			if (i == 0)		//...if it's the first block, you xor it with the IV...
@@ -359,6 +373,7 @@ unsigned char * decrypt_cbc_mode(block * b, int bnum, unsigned char round_keys[N
 				half_block_xor(b[bcount].right, b[bcount].right, blocks_copy[bcount-1].right);
 			}
 
+			//logging (post-decryption)
 			printf("---------- AFTER ------------");
 			print_block(b[bcount].left, b[bcount].right);
 			
