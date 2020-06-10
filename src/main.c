@@ -17,6 +17,7 @@ int main(int argc, char * argv[])
 	strncpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
+	unsigned long size = 0;
 
 	FILE * temp;
 	int saved_stdout = dup(1);
@@ -149,7 +150,6 @@ int main(int argc, char * argv[])
 	if (result == NULL) return -1;
 
 	//figuring out the final size of the output and printing to file 
-	unsigned long size = 0;
 	if (to_do == dec) //using the size written in the last block (returned by remove_padding) to determine how much text to write
 	{ 
 		size = remove_padding(result, num_blocks);
