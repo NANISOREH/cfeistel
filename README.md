@@ -1,8 +1,8 @@
 # cfeistel
 <p>Implementation of a basic Feistel cipher in C. Needless to say, it's just an exercise and NOT intended to be used as actual crypto.
-As of now, it operates on 16 bytes blocks and an 8 bytes key, in CBC, ECB and CTR mode, on files with a maximum size of 160mb. Padding is applied both to blocks and key if needed.</p>
+It operates on 16 bytes blocks and an 8 bytes key, in CBC, ECB and CTR mode, on files of any size.</p>
 <p>The "f" part of the cipher has no real cryptographic value but still serves the purpose of showing a Feistel cipher in motion. It aspires to be a very simple SP network.</p>
-<p>I plan on implementing more modes of operation and a proper padding scheme and/or ciphertext stealing. I might also add the possibility to work on arbitrary filesizes by reading files in chunks, and I'm looking into ways to parallelize the workload for the modes of operation that allow parallel computing. </p>
+<p>I plan on implementing more modes of operation and a proper padding scheme and/or ciphertext stealing. I'm also looking into ways to parallelize the workload for the modes of operation that allow parallel computing to gain some performance. </p>
 
 # Installation
 <p>Clone this repo, cd into it and `make cfeistel`. Make sure you have make installed.</p>

@@ -47,43 +47,6 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks)
 	return size;
 }
 
-//Reads the input file, copies it into a buffer.
-//Returns the number of characters read, or -1 in case of error.
-int read_from_file(unsigned char * buffer, char * filename)
-{
-	if (buffer == NULL)	return -1;
-
-	FILE *ptr;
-	ptr = fopen(filename,"rb");
-
-	unsigned long length; 
-	if (ptr != NULL)
-	{
-		length = fread(buffer,sizeof(char),BUFSIZE,ptr); 
-		buffer[length++] = '\0';
-		fclose(ptr);
-	}
-	else
-		return -1;
-
-	return length;
-}
-
-//Prints the result of the program into the output file
-void print_to_file(unsigned char * out, char * filename, unsigned long size)
-{
-	if (out == NULL) return;
-
-	FILE *write_ptr;
-	write_ptr = fopen(filename,"wb");
-
-	if (write_ptr != NULL)
-	{
-		fwrite(out,size,1,write_ptr); 
-		fclose(write_ptr);
-	}
-}
-
 //Given pointers to left and right halves of a block, it prints out content and checksum of the block
 void print_block(unsigned char * left, unsigned char * right)
 {
