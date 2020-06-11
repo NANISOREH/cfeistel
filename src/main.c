@@ -13,13 +13,15 @@ int main(int argc, char * argv[])
 
 	unsigned char * data;
 	unsigned char * key;
+	unsigned int final_flag = 0;
 	key = calloc (KEYSIZE, sizeof(char));
 	strncpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
 	unsigned long size = 0;
 
-	FILE * temp;
+	FILE * read_file;
+	FILE * write_file;
 	int saved_stdout = dup(1);
 	dup2(open("/dev/null", O_WRONLY | O_APPEND), 1);
 	char * infile = "in";
@@ -131,37 +133,65 @@ int main(int argc, char * argv[])
 		}
 	}
 
+	//allocating space for the buffer, opening input and output files
 	data = (unsigned char *)calloc (BUFSIZE, sizeof(unsigned char));
-	size = read_from_file(data, infile);
-	if (size == -1)
-	{
-		fprintf(stderr, "\nInput file not readable!\n");
-		return -1;
-	}
-	data = (unsigned char *)realloc(data, size);
-	if (data == NULL) return -1;
-	
-	//figuring out the number of blocks to write to file in case it's an encryption
-	num_blocks = size/BLOCKSIZE;
-	if (to_do == enc && size % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will need one extra block (only the size accounting block)
-		num_blocks++;
-	else if(to_do == enc) //not multiple of blocksize, the ciphertext will need two extra blocks (0-padded block and size accounting block)
-		num_blocks+=2;
+	read_file = fopen(infile, "rb");
+	write_file = fopen(outfile, "wb"); //clears the file to avoid appending to an already written file
+	write_file = freopen(outfile, "ab", write_file);
 
-	//starting the correct operation and returning -1 in case there's an error
-	if (to_do == enc) result = feistel_encrypt(data, size, key, chosen);
-	else if (to_do == dec) result = feistel_decrypt(data, size, key, chosen);
-	if (result == NULL) return -1;
-
-	//figuring out the final size of the output and printing to file 
-	if (to_do == dec) //using the size written in the last block (returned by remove_padding) to determine how much text to write
-	{ 
-		size = remove_padding(result, num_blocks);
-		print_to_file(result, outfile, size);
-	}
-	else //using the number of blocks calculated before to determine how much text to write
+	//This loop will continue reading from read_file, processing data in chunks of BUFSIZE bytes and writing them to write_file,
+	//until it reaches a point in the file when fread returns less than BUFSIZE bytes. That means it's the last chunk and the loop ends.
+	while (1)
 	{
-		print_to_file(result, outfile, num_blocks * BLOCKSIZE);
+		if (read_file==NULL) 
+		{
+			fprintf(stderr, "\nInput file not found!\n");
+			return -1;
+		}
+		size = fread(data, sizeof(char), BUFSIZE, read_file);
+		if (size < 0)
+		{
+			fprintf(stderr, "\nInput file not readable!\n");
+			return -1;
+		}
+		else if (size < BUFSIZE) final_flag = 1;  //buffer is not full: it means it's (probably) the last chunk of data
+		
+		//figuring out the number of blocks to write to file
+		num_blocks = size/BLOCKSIZE;
+
+		//In case it's an encryption and we're at the last chunk of data we have to add the padded block and the final block with the size
+		if (final_flag == 1 && to_do == enc)
+		{
+			if (size % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will need one extra block (only the size accounting block)
+				num_blocks++;
+			else //not multiple of blocksize, the ciphertext will need two extra blocks (0-padded block and size accounting block)
+				num_blocks+=2;
+		}
+
+		//starting the correct operation and returning -1 in case there's an error
+		if (to_do == enc) result = feistel_encrypt(data, size, key, chosen);
+		else if (to_do == dec) result = feistel_decrypt(data, size, key, chosen);
+		if (result == NULL) return -1;
+
+		//figuring out the final size of the output and printing to file 
+		if (to_do == dec && final_flag == 1) //using the size written in the last block (returned by remove_padding) to determine how much text to write
+		{ 
+			size = remove_padding(result, num_blocks);
+			fwrite(result, size, 1, write_file); 
+		}
+		else //using the number of blocks calculated before to determine how much text to write
+		{
+			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file); 
+		}
+
+		free(result);
+
+		if (final_flag == 1) //it was the last chunk of data, we're done
+		{
+			fclose(read_file);
+			fclose(write_file);
+			break;
+		}
 	}
 
 	return 0;
