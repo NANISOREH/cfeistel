@@ -3,8 +3,8 @@
 #include "stdlib.h"
 #include "utils.h"
 #include "feistel.h"
-#include <unistd.h> 
-#include <fcntl.h> 
+#include "unistd.h" 
+#include "fcntl.h" 
 
 int main(int argc, char * argv[]) 
 {
@@ -36,7 +36,7 @@ int main(int argc, char * argv[])
 	}
 	else
 	{
-		printf("\nEnter a valid command! (enc/dec)\n\n");
+		fprintf(stderr, "\nEnter a valid command! (enc/dec)\n\n");
 		return -1;
 	}	
 
@@ -53,7 +53,7 @@ int main(int argc, char * argv[])
 			} 
 			else
 			{
-				printf("\nEnter a non-empty key\n");
+				fprintf(stderr, "\nEnter a non-empty key\n");
 				return -1;
 			}
 		}
@@ -68,7 +68,7 @@ int main(int argc, char * argv[])
 			} 
 			else
 			{
-				printf("\nEnter a non-empty filename\n");
+				fprintf(stderr, "\nEnter a non-empty filename\n");
 				return -1;
 			}
 		}
@@ -83,7 +83,7 @@ int main(int argc, char * argv[])
 			} 
 			else
 			{
-				printf("\nEnter a non-empty filename\n");
+				fprintf(stderr, "\nEnter a non-empty filename\n");
 				return -1;
 			}
 		}
@@ -109,44 +109,48 @@ int main(int argc, char * argv[])
 				}
 				else
 				{
-					printf("\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
+					fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
 					return -1;
 				}
 			} 
 			else
 			{
-				printf("\nEnter a non-empty filename!\n");
+				fprintf(stderr, "\nEnter a non-empty filename!\n");
 				return -1;
 			}
 		}
+		//-v parameter, logging enabled
 		else if (strcmp(argv[i], "-v") == 0)
 		{
 			dup2(saved_stdout, 1);
 		}
 		else
 		{
-			printf("\nUnknown parameter '%s'\n", argv[i]);
+			fprintf(stderr, "\nUnknown parameter '%s'\n", argv[i]);
 			return -1;
 		}
 	}
 
 	data = (unsigned char *)calloc (BUFSIZE, sizeof(unsigned char));
-	if (data == NULL || read_from_file(data, infile) == -1)
+	size = read_from_file(data, infile);
+	if (size == -1)
 	{
-		printf("\nInput file not readable!\n");
+		fprintf(stderr, "\nInput file not readable!\n");
 		return -1;
 	}
+	data = (unsigned char *)realloc(data, size);
+	if (data == NULL) return -1;
 	
-	//figuring out the number of blocks to write in case it's an encryption
-	num_blocks = str_safe_len(data)/BLOCKSIZE;
-	if (to_do == enc && str_safe_len(data) % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will have one extra block (only the size block)
+	//figuring out the number of blocks to write to file in case it's an encryption
+	num_blocks = size/BLOCKSIZE;
+	if (to_do == enc && size % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will need one extra block (only the size accounting block)
 		num_blocks++;
-	else if(to_do == enc) //not multiple of blocksize, the ciphertext will have two extra blocks (0-padded block and size block)
+	else if(to_do == enc) //not multiple of blocksize, the ciphertext will need two extra blocks (0-padded block and size accounting block)
 		num_blocks+=2;
 
 	//starting the correct operation and returning -1 in case there's an error
-	if (to_do == enc) result = feistel_encrypt(data, key, chosen);
-	else if (to_do == dec) result = feistel_decrypt(data, key, chosen);
+	if (to_do == enc) result = feistel_encrypt(data, size, key, chosen);
+	else if (to_do == dec) result = feistel_decrypt(data, size, key, chosen);
 	if (result == NULL) return -1;
 
 	//figuring out the final size of the output and printing to file 

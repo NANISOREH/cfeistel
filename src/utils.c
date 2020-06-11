@@ -48,8 +48,11 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks)
 }
 
 //Reads the input file, copies it into a buffer.
+//Returns the number of characters read, or -1 in case of error.
 int read_from_file(unsigned char * buffer, char * filename)
 {
+	if (buffer == NULL)	return -1;
+
 	FILE *ptr;
 	ptr = fopen(filename,"rb");
 
@@ -62,11 +65,15 @@ int read_from_file(unsigned char * buffer, char * filename)
 	}
 	else
 		return -1;
+
+	return length;
 }
 
 //Prints the result of the program into the output file
 void print_to_file(unsigned char * out, char * filename, unsigned long size)
 {
+	if (out == NULL) return;
+
 	FILE *write_ptr;
 	write_ptr = fopen(filename,"wb");
 
@@ -163,38 +170,17 @@ void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_fi
 	*first = (*first & ~(1UL << pos_first)) | (second_bit << pos_first);
 }
 
-//Basicly strncpy but it ignores '\0' null characters.
+//Basicly strncpy but it ignores '\0' null characters, copying exactly size characters.
 void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size)
 {
 	for (long unsigned i=0; i<size; i++)
 		dest[i] = src[i];
 }
 
-//Printf wrapper that ignores '\0' null characters.
+//Printf wrapper that ignores '\0' null characters, printing exactly size characters.
 void str_safe_print(unsigned char * to_print, unsigned long size)
 {
 	printf("\n");
 	for (int i=0; i<size; i++)
 		printf("%c", to_print[i]);
-}
-
-//Basicly strlen but it doesn't stop counting the length at the first '\0'.
-//Note: still has the problem that it won't count the length correctly if a ciphertext ENDS with '/0'
-//and while it has never happened so far in my test runs, it could theoretically happen.
-unsigned long str_safe_len(unsigned char * string)
-{
-	unsigned long len=0;
-	int flag=0;
-	for (unsigned long i=0; i<BUFSIZE; i++)
-	{
-		if (string[i]==0)
-			flag=1;
-		else
-			flag=0;
-
-		if (flag==0)
-			len = i + 1;
-	}
-
-	return len;
 }
