@@ -11,4 +11,3 @@ void stringify_counter(unsigned char * string, unsigned long counter);
 void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_first, unsigned int pos_second);
 void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size);
 void str_safe_print(unsigned char * to_print, unsigned long size);
-unsigned long str_safe_len(unsigned char * string);

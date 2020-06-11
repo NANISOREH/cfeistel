@@ -5,12 +5,12 @@
 #include "feistel.h"
 
 //handles input data, starts execution of the cipher in encryption mode, returns the result, or NULL if an error is encountered
-unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum mode chosen)
+unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen)
 {
-	unsigned long data_len = str_safe_len(data);	
 	//if the size of the input data is not multiple of the block size,
 	//remainder will be the number of leftover bytes that will go into the last padded block
 	int remainder = data_len % BLOCKSIZE;	
+	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
 	unsigned long i=0;
@@ -96,10 +96,8 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned char * key, enum 
 }
 
 //handles input data, starts execution of the cipher in decryption mode, returns the result, or NULL if an error is encountered
-unsigned char * feistel_decrypt(unsigned char * data, unsigned char * key, enum mode chosen)
+unsigned char * feistel_decrypt(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen)
 {
-	unsigned long data_len = str_safe_len(data);
-
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
 	unsigned char temp[NROUND][KEYSIZE];
@@ -189,6 +187,7 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 	unsigned char * ciphertext;
 	unsigned long bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	if (ciphertext == NULL) return ciphertext;
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
 	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
@@ -286,6 +285,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	unsigned char * ciphertext;
 	unsigned long bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	if (ciphertext == NULL) return ciphertext;
 
 	//prev_ciphertext will start off with the initialization vector, later it will be used in every iteration x 
 	//to store the ciphertext of block x, needed to encrypt the block x+1
@@ -333,6 +333,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	unsigned long bcount=0;
 	unsigned char * plaintext;
 	plaintext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	if (plaintext == NULL) return plaintext;
 
 	//making a copy of the whole ciphertext: for cbc decryption you need the ciphertext of the block i-1
 	//to decrypt the block i. Since I'm operating the feistel algorithm in-place I needed to store these ciphertexts in advance.
@@ -421,9 +422,8 @@ void sp_network(unsigned char * data, unsigned char * key)
 		//XORing the round key with the block data
 		data[i] = data[i] ^ key[i];
 
-		//Splitting the bytes into two parts of 4 bits and feeding them to the substitution box.
-		//Would have been better to leave them in one piece and operate on a 8-bit S-box? Yes.
-		//Do I have better ways to spend my time than writing a 256-entries lookup table? Also yes. Barely, but yes. 
+		//Splitting the bytes into two parts of 4 bits and feeding them to the substitution box,
+		//then merging the result together.
 		split_byte(&left_part, &right_part, data[i]);
 		s_box(&right_part, 0);
 		s_box(&left_part, 1);
@@ -434,7 +434,9 @@ void sp_network(unsigned char * data, unsigned char * key)
 	p_box(data);
 }
 
-//4-bit substitution box
+//4-bit input -> 4-bit output substitution boxes.
+//The side parameter differentiates between the two S-boxes: 
+//0 is for the left side of the byte and 1 is for the right.
 void s_box(unsigned char * byte, int side)
 {
 	if (side == 0)
