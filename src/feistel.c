@@ -21,41 +21,22 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, un
 	//remainder will be the number of leftover bytes that will go into the last padded block
 	int remainder = data_len % BLOCKSIZE;	
 
-	//Allocating space for the blocks.
-	//We only need extra blocks if it's the last chunk of input data, because only in that case we have to add the padding and append the data size.
-	//We understand that it's the last chunk when there's exactly as much data as the input buffer can contain.
+	//Figuring how much space we need for the blocks.
+	//We only need extra blocks if we're at the last chunk of input data, because only in that case we have to append the data size and eventually add padding.
+	//We understand that it's (probably) the last chunk when there's less data than the input buffer size.
 	//NOTE: I have to find a solution for the case in which the file size is a multiple of the buffer size, which is unlikely but,
 	//you know, could happen.
-	block * b;
 	if (data_len == BUFSIZE)	//full buffer worth of data means it's not the last chunk of data, so we won't need to add extra blocks
-		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));	
+		bcount = (data_len * sizeof(char)) / BLOCKSIZE;	
 	else if (data_len < BUFSIZE && remainder == 0)		//last block: data size is multiple of the blocksize, we need an extra block
-		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 1, sizeof(block));		
+		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 1;
 	else if (data_len < BUFSIZE)			//last block: data size is not multiple of the blocksize, we need two extra blocks
-		b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE) + 2, sizeof(block));
-
+		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 2;
+	
+	//Reallocating the data pointer as a block pointer with the new size
+	block * b = (block *) realloc(data, bcount * sizeof(block));
 	if (b == NULL) return NULL;
 
-	while (i < data_len)	//forming the blocks from the input data
-    {
-        buffer[i % BLOCKSIZE] = data[i];
-        i++;
-
-        if ((i+1) % BLOCKSIZE == 0)		//completed a block
-        {
-        	buffer[i % BLOCKSIZE] = data[i];
-        	i++;
-        	for (int j=0; j<BLOCKSIZE/2; j++)	//filling the block with the buffered data
-			{
-				b[bcount].left[j] = buffer[j];
-				b[bcount].right[j] = buffer[j+8];
-			}
-
-			bcount++;
-			if (bcount==data_len/BLOCKSIZE)		//formed the right number of blocks, break the cycle
-				break;
-        }
-    }
     //Padding shenanigans: they apply only if it's the last chunk of data read.
     if (data_len<BUFSIZE)	
     {
@@ -64,32 +45,29 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, un
 	    	for (int z=0; z<BLOCKSIZE; z++)	
 	    	{
 	    		if (z < remainder)	//there's still leftover data
-	    			buffer[z] = data[(bcount * BLOCKSIZE) + z];
+	    			buffer[z] = data[((bcount-2) * BLOCKSIZE) + z];
 	    		else	//no more leftover data, proceed with the padding
 	    			buffer[z] = '0';
 	    	}
 
 			for (int y=0; y<BLOCKSIZE/2; y++)	//copying the buffered data on the padded block
 			{
-				b[bcount].left[y] = buffer[y];
-				b[bcount].right[y] = buffer[y+8];
+				b[bcount - 2].left[y] = buffer[y];
+				b[bcount - 2].right[y] = buffer[y+8];
 			}
-
-			bcount++;
 	    }
 
 	    //appending a final block with the real(unpadded) size of the encrypted data
 	    int flag = 0;
-	   	memcpy(&b[bcount], &last_block, sizeof(block));
+	   	memcpy(&b[bcount-1], &last_block, sizeof(block));
 	   	for (int i=0; i<BLOCKSIZE; i++)
 	   	{
 	   		if (flag == 1)
-	   			b[bcount].left[i]='#';
+	   			b[bcount-1].left[i]='#';
 	   		
-	   		if (flag==0 && b[bcount].left[i] == '\0')
+	   		if (flag==0 && b[bcount-1].left[i] == '\0')
 	   			flag = 1;
 	   	}
-	    bcount++;
 	}
 
     if (chosen == cbc)
@@ -124,31 +102,10 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned long data_len, un
 		}
 	}
 
-	//allocating space for the blocks. 
-	block * b;
-	b = (block*)calloc((data_len * sizeof(char) / BLOCKSIZE), sizeof(block));
-	if (b == NULL) return NULL;		
-
-	while (i < data_len)	//forming the blocks from the input data
-    {
-        buffer[i % BLOCKSIZE] = data[i];
-        i++;
-
-        if ((i+1) % BLOCKSIZE == 0)		//completed a block
-        {
-        	buffer[i % BLOCKSIZE] = data[i];
-        	i++;
-        	for (int j=0; j<BLOCKSIZE/2; j++)	//filling the block with the buffered data
-			{
-				b[bcount].left[j] = buffer[j];
-				b[bcount].right[j] = buffer[j+8];
-			}
-
-			bcount++;
-			if (bcount==data_len/BLOCKSIZE)		//we formed the right number of blocks, break the cycle
-				break;
-        }
-    }
+	bcount = (data_len * sizeof(char)) / BLOCKSIZE;
+	//No need to reallocate: after decryption plaintext will never be greater than the ciphertext was:
+	//it should be okay to just assign the address of the raw input data to the block pointer b
+	block * b = (block *) data;
 
     if (chosen == cbc)
     	return decrypt_cbc_mode(b, bcount, round_keys);
@@ -186,7 +143,7 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 
 }
 
-//Executes the cipher in ECB mode; takes a block array and the round keys, returns processed data.
+//Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
@@ -218,11 +175,10 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 		bcount++;
 	}
 
-	free(b);
 	return ciphertext;
 }
 
-//Executes the cipher in CTR mode; takes a block array and the round keys, returns processed data.
+//Executes the cipher in CTR mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
@@ -282,11 +238,10 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 		bcount++;
 	}
 
-	free(b);
 	return ciphertext;
 }
 
-//Executes encryption in CBC mode; takes a block array and the round keys, returns processed data.
+//Executes encryption in CBC mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
@@ -331,11 +286,10 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		bcount++;
 	}
 
-	free(b);
 	return ciphertext;
 }
 
-//Executes decryption in CBC mode; takes a block array and the round keys, returns processed data.
+//Executes decryption in CBC mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned long bcount=0;
@@ -395,7 +349,6 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 
 	}
 
-	free(b);
 	free(blocks_copy);
 	return plaintext;
 }
