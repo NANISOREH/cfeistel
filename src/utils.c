@@ -147,3 +147,56 @@ void str_safe_print(unsigned char * to_print, unsigned long size)
 	for (int i=0; i<size; i++)
 		printf("%c", to_print[i]);
 }
+
+//Checks if the next character is EOF without altering the position of the file pointer,
+//basicly takes a peek forward to see if it's the last chunk of data.
+int check_end_file(FILE *stream)
+{
+    int c;
+
+    c = fgetc(stream);
+    ungetc(c, stream);
+
+    if (c == EOF) return 1;
+    else return 0;
+}
+
+//Checks if the last block for the size accounting goes a block over the BUFSIZE bounds and only returns 1 in that case.
+//Needing this check to allow the last chunk of data to be BUFSIZE + 1 extra block instead of just BUFSIZE,
+//so that we can handle the case in which data ends exactly within the last block of the last chunk,
+//causing the accounting block to go over the BUFSIZE bounds.
+int check_last_block(FILE *stream)
+{
+    int c;
+
+    fseek(stream, BUFSIZE, SEEK_CUR); //we're at the first character of chunk x, we move to the first character of chunk x+1
+    
+    c = fgetc(stream);
+    if (c == EOF) //if the next character is the EOF it means that there's nothing else to read, rewind the file and return 0
+    {
+    	ungetc(c, stream);
+    	fseek(stream, 0 - BUFSIZE, SEEK_CUR);
+    	return 0;
+    }
+    else //there's other stuff to read, gotta dig deeper 
+    {
+    	ungetc(c, stream);
+    	fseek(stream, BLOCKSIZE, SEEK_CUR); //we're at the first character of chunk x+1, we move a block further
+
+        c = fgetc(stream);
+	    if (c == EOF) //next character is EOF means the first and only block of the chunk is the accounting block, bingo!
+	    {
+	    	ungetc(c, stream);
+	    	fseek(stream, 0 - (BUFSIZE + BLOCKSIZE), SEEK_CUR);
+	    	return 1;
+	    }
+	    else //next character is something other than EOF means there's other data to be read, we were not at the last chunk to begin with
+	    {
+	    	ungetc(c, stream);
+	    	fseek(stream, 0 - (BUFSIZE + BLOCKSIZE), SEEK_CUR);
+	    	return 0;
+	    }
+    }
+
+    return -1;
+}

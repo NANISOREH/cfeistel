@@ -143,23 +143,36 @@ int main(int argc, char * argv[])
 	//until it reaches a point in the file when fread returns less than BUFSIZE bytes. That means it's the last chunk and the loop ends.
 	while (1)
 	{
+		//checking for errors and reading the data, obtaining the size of the data read
 		if (read_file==NULL) 
 		{
 			fprintf(stderr, "\nInput file not found!\n");
 			return -1;
 		}
-		size = fread(data, sizeof(char), BUFSIZE, read_file);
+		
+		//if the accounting block goes over the BUFSIZE bounds, we read an extra block in this iteration
+		if (to_do == dec && check_last_block(read_file))
+		{
+			size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
+			final_flag = 1;
+		}
+		else
+		{
+			size = fread(data, sizeof(char), BUFSIZE, read_file);
+		}
+		
 		if (size < 0)
 		{
 			fprintf(stderr, "\nInput file not readable!\n");
 			return -1;
 		}
-		else if (size < BUFSIZE) final_flag = 1;  //buffer is not full: it means it's (probably) the last chunk of data
+
+		else if (size < BUFSIZE) final_flag = 1;  //buffer is not full: it means it's the last chunk of data
+		else if (check_end_file(read_file)) final_flag = 1;	 //buffer is full but there's EOF after this chunk: it's the last one
 		
 		//figuring out the number of blocks to write to file
 		num_blocks = size/BLOCKSIZE;
-
-		//In case it's an encryption and we're at the last chunk of data we have to add the padded block and the final block with the size
+		//In case it's an encryption and we're at the last chunk of data we have to add the extra blocks
 		if (final_flag == 1 && to_do == enc)
 		{
 			if (size % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will need one extra block (only the size accounting block)
@@ -177,6 +190,10 @@ int main(int argc, char * argv[])
 		if (to_do == dec && final_flag == 1) //using the size written in the last block (returned by remove_padding) to determine how much text to write
 		{ 
 			size = remove_padding(result, num_blocks);
+			//if the last chunk only contains an accounting block saying the chunk has 0 bytes, it means that the last chunk was
+			//completely full and feistel_decrypt didn't detect it as "last chunk". In this case we can just use BUFSIZE as size.
+			//It works, but I might want to find a less hacky solution to this issue.
+			if (size == 0) size = BUFSIZE; 
 			fwrite(result, size, 1, write_file); 
 		}
 		else //using the number of blocks calculated before to determine how much text to write
