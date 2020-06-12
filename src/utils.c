@@ -39,7 +39,9 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks)
 	}
 
 	unsigned long size;
-	sscanf(last_block, "%lu", &size);
+	
+	if (sscanf(last_block, "%lu", &size) < 1) //didn't find a number here, decryption key is wrong
+		return -1;
 
 	for (unsigned long i = size; i<num_blocks * BLOCKSIZE; i++) 
 		result[i] = '\0';

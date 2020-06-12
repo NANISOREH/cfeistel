@@ -13,7 +13,7 @@ int main(int argc, char * argv[])
 
 	unsigned char * data;
 	unsigned char * key;
-	unsigned int final_flag = 0;
+	unsigned int final_chunk_flag = 0;
 	key = calloc (KEYSIZE, sizeof(char));
 	strncpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
@@ -140,7 +140,8 @@ int main(int argc, char * argv[])
 	write_file = freopen(outfile, "ab", write_file);
 
 	//This loop will continue reading from read_file, processing data in chunks of BUFSIZE bytes and writing them to write_file,
-	//until it reaches a point in the file when fread returns less than BUFSIZE bytes. That means it's the last chunk and the loop ends.
+	//until it reaches the last chunk of readable data. The standard way to understand when it's the last one is just checking if
+	//fread read less than BUFSIZE bytes, but there are borderline cases that are checked in other ways.
 	while (1)
 	{
 		//checking for errors and reading the data, obtaining the size of the data read
@@ -150,30 +151,30 @@ int main(int argc, char * argv[])
 			return -1;
 		}
 		
-		//if the accounting block goes over the BUFSIZE bounds, we read an extra block in this iteration
+		//borderline case: if there's only an accounting block going over the BUFSIZE bounds, it's the last chunk.
+		//We'll read an extra block in this iteration to make space for the accounting block in the current chunk.
 		if (to_do == dec && check_last_block(read_file))
 		{
 			size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
-			final_flag = 1;
+			final_chunk_flag = 1;
 		}
-		else
+		else //normally reading BUFSIZE bytes
 		{
 			size = fread(data, sizeof(char), BUFSIZE, read_file);
 		}
-		
-		if (size < 0)
+
+		if (size < 0) //reading error
 		{
 			fprintf(stderr, "\nInput file not readable!\n");
 			return -1;
 		}
-
-		else if (size < BUFSIZE) final_flag = 1;  //buffer is not full: it means it's the last chunk of data
-		else if (check_end_file(read_file)) final_flag = 1;	 //buffer is full but there's EOF after this chunk: it's the last one
+		else if (size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
+		else if (check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
 		
 		//figuring out the number of blocks to write to file
 		num_blocks = size/BLOCKSIZE;
 		//In case it's an encryption and we're at the last chunk of data we have to add the extra blocks
-		if (final_flag == 1 && to_do == enc)
+		if (final_chunk_flag == 1 && to_do == enc)
 		{
 			if (size % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will need one extra block (only the size accounting block)
 				num_blocks++;
@@ -186,24 +187,34 @@ int main(int argc, char * argv[])
 		else if (to_do == dec) result = feistel_decrypt(data, size, key, chosen);
 		if (result == NULL) return -1;
 
-		//figuring out the final size of the output and printing to file 
-		if (to_do == dec && final_flag == 1) //using the size written in the last block (returned by remove_padding) to determine how much text to write
+		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
+		//and if there's no size written in the last block, it means that the specified decryption key was invalid.
+		if (to_do == dec && final_chunk_flag == 1) 
 		{ 
 			size = remove_padding(result, num_blocks);
+			
 			//if the last chunk only contains an accounting block saying the chunk has 0 bytes, it means that the last chunk was
 			//completely full and feistel_decrypt didn't detect it as "last chunk". In this case we can just use BUFSIZE as size.
 			//It works, but I might want to find a less hacky solution to this issue.
-			if (size == 0) size = BUFSIZE; 
+			if (size == 0) 
+			{
+				size = BUFSIZE;
+			}
+			else if (size == -1) //no accounting block found in the last chunk, invalid key
+			{
+				fprintf(stderr, "\nWrong decryption key used!\n");
+				return -1;
+			}
 			fwrite(result, size, 1, write_file); 
 		}
-		else //using the number of blocks calculated before to determine how much text to write
+		else //in any other case we're using the number of blocks calculated before to determine how much text to write
 		{
 			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file); 
 		}
 
 		free(result);
 
-		if (final_flag == 1) //it was the last chunk of data, we're done
+		if (final_chunk_flag == 1) //it was the last chunk of data, we're done
 		{
 			fclose(read_file);
 			fclose(write_file);
