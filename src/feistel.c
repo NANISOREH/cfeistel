@@ -4,7 +4,8 @@
 #include "utils.h"
 #include "feistel.h"
 
-//handles input data, starts execution of the cipher in encryption mode, returns the result, or NULL if an error is encountered
+//Receives and organizes input data, starts execution of the cipher in encryption mode. 
+//Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
 unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen)
 {	
 	unsigned char buffer[BLOCKSIZE];
@@ -14,23 +15,21 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, un
 
 	block last_block;
 	snprintf(last_block.left, BLOCKSIZE, "%lu", data_len);
-
+	//scheduling the round keys starting from the master key given
 	schedule_key(round_keys, key);	//see the function schedule_key for info
 
-	//if the size of the input data is not multiple of the block size,
-	//remainder will be the number of leftover bytes that will go into the last padded block
-	int remainder = data_len % BLOCKSIZE;	
+   	//if the size of the last chunk is not multiple of the block size,
+	//remainder will be the number of leftover bytes that will go into the padded block
+	unsigned int remainder = data_len % BLOCKSIZE;
 
 	//Figuring how much space we need for the blocks.
 	//We only need extra blocks if we're at the last chunk of input data, because only in that case we have to append the data size and eventually add padding.
-	//We understand that it's (probably) the last chunk when there's less data than the input buffer size.
-	//NOTE: I have to find a solution for the case in which the file size is a multiple of the buffer size, which is unlikely but,
-	//you know, could happen.
+	//We understand that it's the last chunk when there's less data than the input buffer can contain.
 	if (data_len == BUFSIZE)	//full buffer worth of data means it's not the last chunk of data, so we won't need to add extra blocks
 		bcount = (data_len * sizeof(char)) / BLOCKSIZE;	
 	else if (data_len < BUFSIZE && remainder == 0)		//last block: data size is multiple of the blocksize, we need an extra block
 		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 1;
-	else if (data_len < BUFSIZE)			//last block: data size is not multiple of the blocksize, we need two extra blocks
+	else if (data_len < BUFSIZE && remainder > 0)		//last block: data size is not multiple of the blocksize, we need two extra blocks
 		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 2;
 	
 	//Reallocating the data pointer as a block pointer with the new size
@@ -39,7 +38,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, un
 
     //Padding shenanigans: they apply only if it's the last chunk of data read.
     if (data_len<BUFSIZE)	
-    {
+    {	
 	    if (remainder>0)	//forming the last padded block, if there's leftover data
 	    {
 	    	for (int z=0; z<BLOCKSIZE; z++)	
@@ -57,7 +56,7 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, un
 			}
 	    }
 
-	    //appending a final block with the real(unpadded) size of the encrypted data
+	    //appending a final block to store the real(unpadded) size of the encrypted data
 	    int flag = 0;
 	   	memcpy(&b[bcount-1], &last_block, sizeof(block));
 	   	for (int i=0; i<BLOCKSIZE; i++)
@@ -80,7 +79,8 @@ unsigned char * feistel_encrypt(unsigned char * data, unsigned long data_len, un
     return NULL;
 }
 
-//handles input data, starts execution of the cipher in decryption mode, returns the result, or NULL if an error is encountered
+//Receives and organizes input data, starts execution of the cipher in decryption mode. 
+//Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
 unsigned char * feistel_decrypt(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen)
 {
 	unsigned char buffer[BLOCKSIZE];
@@ -89,6 +89,7 @@ unsigned char * feistel_decrypt(unsigned char * data, unsigned long data_len, un
 	unsigned long i=0;
 	unsigned long bcount=0;
 
+	//scheduling the round keys starting from the master key given
 	schedule_key(round_keys, key);	//see the function schedule_key for info
 	if (chosen != ctr) //round keys sequence has to be inverted for decryption, except for ctr mode
 	{
