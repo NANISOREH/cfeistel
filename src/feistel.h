@@ -2,7 +2,7 @@
 #define DEFAULT_OP enc
 #define BLOCKSIZE 16
 #define KEYSIZE 8
-#define NROUND 8
+#define NROUND 10
 
 enum operation{enc, dec};
 enum mode{cbc, ecb, ctr}; 
