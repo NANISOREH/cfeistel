@@ -9,12 +9,15 @@ It operates on 16 bytes blocks and an 8 bytes key, in CBC, ECB and CTR mode, on 
 
 # Usage
 Encryption:
-`./cfeistel enc [-k key][-in infile][-out outfile][-m mode]`
+`./cfeistel enc [-k key][-i infile][-o outfile][-m mode]`
 
 Decryption:
-`./cfeistel dec [-k key][-in infile][-out outfile][-m mode]`
+`./cfeistel dec [-k key][-i infile][-o outfile][-m mode]`
 
-<p>If parameters are not specified default values are used. 
-<em>in</em> is the default input file, <em>out</em> is the default output file, <em>secretkey</em> is the default key value and <em>ctr</em> is the default mode. The -m parameter accepts <em>ecb</em>, <em>cbc</em> and <em>ctr</em>.
+<p>If no parameters are specified default values are used. 
+<em>in</em> is the default input file, <em>out</em> is the default output file, <em>secretkey</em> is the default key value and <em>ctr</em> is the default mode.
+In case the user specifies an input file but not an output file, the source will be replaced with the encrypted file.
+The -k accepts a string to be used as a key.
+The -m parameter accepts <em>ecb</em>, <em>cbc</em> and <em>ctr</em>.
 
 You can add -v to enable some block-by-block logging for the operation to perform.</p>

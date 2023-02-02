@@ -1,4 +1,3 @@
-#define BUFSIZE 48000000
 void print_byte(char c);
 int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second);
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks);

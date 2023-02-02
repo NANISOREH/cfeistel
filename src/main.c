@@ -1,15 +1,18 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdlib.h"
+#include "common.h"
 #include "utils.h"
 #include "feistel.h"
 #include "unistd.h" 
-#include "fcntl.h" 
+#include "fcntl.h"
+#include "block.h"
 
 int main(int argc, char * argv[]) 
 {
 	enum mode chosen = DEFAULT_MODE;
 	enum operation to_do = DEFAULT_OP;
+	enum outmode output_mode = DEFAULT_OUT;
 
 	unsigned char * data;
 	unsigned char * key;
@@ -59,8 +62,8 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
-		//-in parameter, specified input file
-		else if (strcmp(argv[i], "-in") == 0)
+		//-i parameter, specified input file
+		else if (strcmp(argv[i], "-i") == 0)
 		{
 			if (argv[i+1]!=NULL)
 			{
@@ -74,14 +77,15 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
-		//-out parameter, specified output file
-		else if (strcmp(argv[i], "-out") == 0)
+		//-o parameter, specified output file
+		else if (strcmp(argv[i], "-o") == 0)
 		{
 			if (argv[i+1]!=NULL)
 			{
 				outfile = malloc (strlen(argv[i+1]) * sizeof(char));
 				strcpy(outfile, argv[i+1]);
 				i++;
+				output_mode = specified;
 			} 
 			else
 			{
@@ -133,6 +137,13 @@ int main(int argc, char * argv[])
 		}
 	}
 
+	if (output_mode == replace) 
+	{
+		outfile = malloc ((strlen(infile) + 4) * sizeof(char));
+		strcpy(outfile, infile);
+		strncat(outfile, ".enc", 4);
+	}
+
 	//allocating space for the buffer, opening input and output files
 	data = (unsigned char *)calloc (BUFSIZE, sizeof(unsigned char));
 	read_file = fopen(infile, "rb");
@@ -182,9 +193,11 @@ int main(int argc, char * argv[])
 				num_blocks+=2;
 		}
 
+		fprintf(stderr, "\nin main: %lu\n", num_blocks);
+
 		//starting the correct operation and returning -1 in case there's an error
-		if (to_do == enc) result = feistel_encrypt(data, size, key, chosen);
-		else if (to_do == dec) result = feistel_decrypt(data, size, key, chosen);
+		if (to_do == enc) result = encrypt_blocks(data, size, key, chosen);
+		else if (to_do == dec) result = decrypt_blocks(data, size, key, chosen);
 		if (result == NULL) return -1;
 
 		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
@@ -203,6 +216,7 @@ int main(int argc, char * argv[])
 			else if (size == -1) //no accounting block found in the last chunk, invalid key
 			{
 				fprintf(stderr, "\nWrong decryption key used!\n");
+				remove(outfile);
 				return -1;
 			}
 			fwrite(result, size, 1, write_file); 
@@ -212,14 +226,23 @@ int main(int argc, char * argv[])
 			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file); 
 		}
 
-		free(result);
-
 		if (final_chunk_flag == 1) //it was the last chunk of data, we're done
 		{
 			fclose(read_file);
 			fclose(write_file);
+			if (output_mode == replace) 
+			{
+				remove(infile);
+				rename(outfile, infile);
+			}			
 			break;
 		}
+
+		//zeroing data for the processed chunk from memory after writing it to file so that it cannot be dumped from memory
+		memset(data, 0, size);
+		memset(result, 0, num_blocks * BLOCKSIZE);
+		
+		free(result);
 	}
 
 	return 0;
