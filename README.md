@@ -8,7 +8,9 @@ ECB, CTR and CBC in decryption allow parallel processing. I'm looking for a way 
 
 # Installation
 <p>Clone this repo, cd into it and `make`. Make sure you have make (and a C compiler) installed.
-Note that I may have used some Linux-specific functions to log processing progress, so it might refuse to compile anywhere else for now.</p> 
+Note that I may have used some Linux-specific functions to log processing progress, so it might refuse to compile anywhere else for now.</p>
+<p>Optionally, you can pass the `BLOCK_LOGGING` compiler flag by means of `make CFLAGS="-DBLOCK_LOGGING"` to get block-by-block logging, useful on very small inputs to debug the cipher's logic and multithreading. 
+The `SEQUENTIAL` compiler flag (`make CFLAGS="-DSEQUENTIAL"`) disables parallelization and executes the cipher on a single thread.</p>
 
 # Usage
 Encryption:
@@ -23,5 +25,3 @@ In case the user specifies an input file but not an output file, the source will
 The -k accepts a string to be used as a key.
 The -m parameter accepts <em>ecb</em>, <em>cbc</em> and <em>ctr</em>.
 </p>
-
-#Compiler flags
