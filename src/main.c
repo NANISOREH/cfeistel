@@ -7,29 +7,27 @@
 #include "unistd.h" 
 #include "fcntl.h"
 #include "block.h"
+#include "sys/time.h"
+#include "omp.h"
 
-int main(int argc, char * argv[]) 
+enum mode chosen = DEFAULT_MODE;
+enum operation to_do = DEFAULT_OP;
+enum outmode output_mode = DEFAULT_OUT;
+char * infile = "in";
+char * outfile = "out";
+unsigned char * key;
+int saved_stdout;
+
+unsigned long total_file_size=0;
+//This variable notes the currently processing block relative to the whole file
+//and not just relative the chunk that's currently in the buffer 
+unsigned long current_block=0; 
+struct timeval start_time;
+
+int command_selection(int argc, char * argv[]);
+
+int command_selection(int argc, char * argv[])
 {
-	enum mode chosen = DEFAULT_MODE;
-	enum operation to_do = DEFAULT_OP;
-	enum outmode output_mode = DEFAULT_OUT;
-
-	unsigned char * data;
-	unsigned char * key;
-	unsigned int final_chunk_flag = 0;
-	key = calloc (KEYSIZE, sizeof(char));
-	strncpy(key, "secretkey", KEYSIZE);
-	unsigned char * result;
-	unsigned long num_blocks;
-	unsigned long size = 0;
-
-	FILE * read_file;
-	FILE * write_file;
-	int saved_stdout = dup(1);
-	dup2(open("/dev/null", O_WRONLY | O_APPEND), 1);
-	char * infile = "in";
-	char * outfile = "out";
-
 	//command choice, enc or dec
 	if (argv[1]!= NULL && strcmp(argv[1], "enc") == 0)
 	{
@@ -125,23 +123,36 @@ int main(int argc, char * argv[])
 				return -1;
 			}
 		}
-		//-v parameter, logging enabled
-		else if (strcmp(argv[i], "-v") == 0)
-		{
-			dup2(saved_stdout, 1);
-		}
 		else
 		{
 			fprintf(stderr, "\nUnknown parameter '%s'\n", argv[i]);
 			return -1;
 		}
 	}
+}
+
+int main(int argc, char * argv[]) 
+{
+	unsigned char * data;
+	unsigned int final_chunk_flag = 0;
+	key = calloc (KEYSIZE, sizeof(char));
+	strncpy(key, "secretkey", KEYSIZE);
+	unsigned char * result;
+	unsigned long num_blocks;
+	//this one is the size of the current "pack" of blocks
+	unsigned long size = 0;
+
+	FILE * read_file;
+	FILE * write_file;
+	saved_stdout = dup(1);
+
+	command_selection(argc, argv);
 
 	if (output_mode == replace) 
 	{
 		outfile = malloc ((strlen(infile) + 4) * sizeof(char));
 		strcpy(outfile, infile);
-		strncat(outfile, ".enc", 4);
+		strncat(outfile, ".enc", 5);
 	}
 
 	//allocating space for the buffer, opening input and output files
@@ -150,18 +161,28 @@ int main(int argc, char * argv[])
 	write_file = fopen(outfile, "wb"); //clears the file to avoid appending to an already written file
 	write_file = freopen(outfile, "ab", write_file);
 
+	if (read_file==NULL) 
+	{
+		exit_message(1, "Input file not found!");
+		return -1;
+	}
+
+	//calculating and printing the total file size
+	fseek(read_file, 0, SEEK_END);
+	total_file_size = ftell(read_file);
+	rewind(read_file);
+	fprintf(stderr, "\nTotal file size: %.2f MB\n\n", (float)total_file_size / (1024.0 * 1024.0));
+	gettimeofday(&start_time, NULL);
+
+	#ifdef SEQUENTIAL
+    	omp_set_num_threads(1);
+	#endif	
+
 	//This loop will continue reading from read_file, processing data in chunks of BUFSIZE bytes and writing them to write_file,
 	//until it reaches the last chunk of readable data. The standard way to understand when it's the last one is just checking if
 	//fread read less than BUFSIZE bytes, but there are borderline cases that are checked in other ways.
 	while (1)
-	{
-		//checking for errors and reading the data, obtaining the size of the data read
-		if (read_file==NULL) 
-		{
-			fprintf(stderr, "\nInput file not found!\n");
-			return -1;
-		}
-		
+	{	
 		//borderline case: if there's only an accounting block going over the BUFSIZE bounds, it's the last chunk.
 		//We'll read an extra block in this iteration to make space for the accounting block in the current chunk.
 		if (to_do == dec && check_last_block(read_file))
@@ -176,7 +197,7 @@ int main(int argc, char * argv[])
 
 		if (size < 0) //reading error
 		{
-			fprintf(stderr, "\nInput file not readable!\n");
+			exit_message(1, "Input file not readable!");
 			return -1;
 		}
 		else if (size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
@@ -192,8 +213,6 @@ int main(int argc, char * argv[])
 			else //not multiple of blocksize, the ciphertext will need two extra blocks (0-padded block and size accounting block)
 				num_blocks+=2;
 		}
-
-		fprintf(stderr, "\nin main: %lu\n", num_blocks);
 
 		//starting the correct operation and returning -1 in case there's an error
 		if (to_do == enc) result = encrypt_blocks(data, size, key, chosen);
@@ -215,7 +234,7 @@ int main(int argc, char * argv[])
 			}
 			else if (size == -1) //no accounting block found in the last chunk, invalid key
 			{
-				fprintf(stderr, "\nWrong decryption key used!\n");
+				exit_message(1, "Wrong decryption key used!");
 				remove(outfile);
 				return -1;
 			}
@@ -235,6 +254,14 @@ int main(int argc, char * argv[])
 				remove(infile);
 				rename(outfile, infile);
 			}			
+			struct timeval current_time;
+			gettimeofday(&current_time, NULL);
+			char speed[100];
+			char time[100];
+			double time_diff = timeval_diff_seconds(start_time, current_time);
+			snprintf(speed, sizeof(speed), "Avg processing speed: %.2f MB/s", estimate_speed(current_time));
+			snprintf(time, sizeof(time), "Time elapsed: %.2f s", time_diff);
+			exit_message(3, "Operation complete!", speed, time);
 			break;
 		}
 

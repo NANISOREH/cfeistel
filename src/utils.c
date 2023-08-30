@@ -5,6 +5,14 @@
 #include "common.h"
 #include "feistel.h"
 #include "utils.h"
+#include "sys/time.h"
+#include "stdarg.h"
+#include "omp.h"
+
+//These variables belong to the main but are needed here to print progress info
+extern long unsigned total_file_size;
+extern long unsigned current_block;
+extern struct timeval start_time;
 
 //Does bitwise xor between two block halves
 int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
@@ -202,4 +210,84 @@ int check_last_block(FILE *stream)
     }
 
     return -1;
+}
+
+//Prints progress information
+void show_progress_data(struct timeval current_time)
+{
+	#ifdef NO_PROGRESS
+    	return;
+	#endif
+
+	unsigned long bnum = total_file_size / BLOCKSIZE;
+	int percentage = (100 * current_block)/bnum;
+
+	printf("\rProgress: %d%%\t Avg speed: %.2f MB/s", percentage, estimate_speed(current_time));
+	fflush(stdout);
+}
+
+//Estimates the processing speed at a given point in time
+double estimate_speed (struct timeval current_time)
+{
+	double processed_data = (current_block * BLOCKSIZE)/(1024*1024);
+	double elapsed_time = (current_time.tv_sec - start_time.tv_sec) + (current_time.tv_usec - start_time.tv_usec) / 1000000.0;
+	return processed_data/elapsed_time;
+}
+
+//Prints a certain number of lines given in input and cleans the screen
+void exit_message(int num_strings, ...)
+{
+	#ifdef NO_EXIT_MESSAGE
+		return;
+	#endif
+
+    // Clear the line before displaying messages
+    printf("\r%*s\r", 100, "");
+    fflush(stdout);
+
+    va_list args;
+    va_start(args, num_strings);
+
+    for (int i = 0; i < num_strings; i++) {
+        const char *message = va_arg(args, const char *);
+        printf("\n%s", message);
+    }
+
+	printf("\n\n");
+    va_end(args);
+}
+
+//Given a block, it prints out its content and checksum
+//Useful for debugging, you can access these per-block logs by compiling with the macro LOG=BLOCK_LOGGING
+void block_logging(block b, const char* message, unsigned long bcount)
+{
+	#ifndef BLOCK_LOGGING
+		return;
+	#endif
+
+	//computes the checksum and populates the block_data string
+	long long unsigned checksum = 0;
+	char block_data[BLOCKSIZE+1];
+	for (int j=0; j<BLOCKSIZE/2; j++)
+	{
+		checksum = checksum + b.left[j] + b.right[j];
+		block_data[j] = b.left[j];
+		block_data[j + BLOCKSIZE/2] = b.right[j];
+	}
+
+	//prints everything out
+	printf("\n\n\nblock %lu processed by the thread %d", bcount, omp_get_thread_num());
+	printf("%s", message);
+	block_data[BLOCKSIZE] = '\0';
+	printf("\nblock text:");
+	str_safe_print(block_data, BLOCKSIZE);
+	printf("\nblock sum: \n%llu\n", checksum);
+	checksum = 0;
+}
+
+double timeval_diff_seconds(struct timeval start, struct timeval end) {
+    long long start_micros = (long long)start.tv_sec * 1000000 + start.tv_usec;
+    long long end_micros = (long long)end.tv_sec * 1000000 + end.tv_usec;
+    
+    return (double)(end_micros - start_micros) / 1000000.0;
 }

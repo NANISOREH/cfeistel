@@ -8,39 +8,49 @@
 #include "utils.h"
 #include "feistel.h"
 #include "opmodes.h"
+#include "sys/time.h"
+#include "omp.h"
+
+
+//These variables belong to the main, but are needed here to keep track of the processing
+extern long unsigned total_file_size;
+extern long unsigned current_block;
 
 //Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
+	struct timeval current_time;
 	unsigned char * ciphertext;
-	unsigned long bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	#pragma omp parallel for
+	for (unsigned long i = 0; i < bnum; ++i) 
 	{
 		//logging (pre-processing)
-		printf("\n\n\nblock %lu (ECB)", bcount);
-		printf("\n---------- BEFORE -----------");
-		print_block(b[bcount].left, b[bcount].right);
-		
-		//applying the cipher on the current block
-		process_block(b[bcount].left, b[bcount].right, round_keys);
-		
-		//logging (post-processing)
-		printf("---------- AFTER ------------");
-		print_block(b[bcount].left, b[bcount].right);
-		
-		//appending the result to the ciphertext variable
-		for (int j=0; j<BLOCKSIZE; j++)	
+		current_block++;
+		if (i % 1200000 == 0)
 		{
-			ciphertext[i+j] = b[bcount].left[j];
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time);
 		}
-		
-		bcount++;
-	}
+		#pragma omp critical
+		block_logging(b[i], "\n----------ECB-------BEFORE-----------", i);
 
+		//applying the cipher on the current block
+		process_block(b[i].left, b[i].right, round_keys);
+
+		//logging (post-processing)
+		#pragma omp critical
+		block_logging(b[i], "\n----------ECB-------AFTER-----------", i);
+
+		//appending the result to the ciphertext variable
+		for (int j = 0; j < BLOCKSIZE; j++)	
+		{
+			ciphertext[(i*BLOCKSIZE) + j] = b[i].left[j];
+		}
+	}
 	return ciphertext;
 }
 
@@ -48,7 +58,7 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	unsigned char * ciphertext;
-	unsigned long bcount=0;
+	struct timeval current_time;
 
 	//using the checksum of the master key as starting point for the counter
 	unsigned long counter = 0;
@@ -73,36 +83,51 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 
-	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	#pragma omp parallel
 	{
-		//initializing the counter block for this iteration
-		str_safe_copy(counter_block.left, nonce, BLOCKSIZE/2);
-		stringify_counter(counter_block.right, counter);
-
-		//logging (pre-processing)
-		printf("\n\n\nblock %lu (CTR)", bcount);
-		printf("\n---------- BEFORE -----------");
-		print_block(b[bcount].left, b[bcount].right);
-		
-		//applying the cipher on the counter block and incrementing the counter
-		process_block(counter_block.left, counter_block.right, round_keys);
-		counter = counter + 1;
-
-		//xor between the ciphered counter block and the current block of plaintext/ciphertext
-		half_block_xor(b[bcount].left, b[bcount].left, counter_block.left);
-		half_block_xor(b[bcount].right, b[bcount].right, counter_block.right);
-		
-		//logging (post-processing)
-		printf("---------- AFTER ------------");
-		print_block(b[bcount].left, b[bcount].right);
-		
-		//storing the result of the xor in the output variable
-		for (unsigned long j=0; j<BLOCKSIZE; j++)	
+		int cur = 0;
+		//launching the feistel algorithm on every block
+		//I use the initial counter as a starting point for the index, because openMP parallelizing for cycles
+		//apparently works better if you rely on the index to distribute the iterations
+		#pragma omp for private(counter_block)
+		for (unsigned long i=counter; i<bnum+counter; ++i)
 		{
-			ciphertext[i+j] = b[bcount].left[j];
-		}
-		bcount++;
+			//This variable will hold the current block
+			//Yes, I already literally have a current_block variable, but it's an extern one that's defined in the main file
+			//and keeps track of the current block in the whole input file, not just in the currently processing chunk
+			cur = i-counter;
+
+			//initializing the counter block for this iteration
+			str_safe_copy(counter_block.left, nonce, BLOCKSIZE/2);
+			stringify_counter(counter_block.right, i);
+
+			//logging (pre-processing)
+			current_block++;
+			if (cur % 1200000 == 0)
+			{
+				gettimeofday(&current_time, NULL);
+				show_progress_data(current_time);
+			}
+			#pragma omp critical
+			block_logging(b[cur], "\n----------CTR-------BEFORE-----------", cur);
+			
+			//applying the cipher on the counter block and incrementing the counter
+			process_block(counter_block.left, counter_block.right, round_keys);
+
+			//xor between the ciphered counter block and the current block of plaintext/ciphertext
+			half_block_xor(b[cur].left, b[cur].left, counter_block.left);
+			half_block_xor(b[cur].right, b[cur].right, counter_block.right);
+			
+			//logging (post-processing)
+			#pragma omp critical
+			block_logging(b[cur], "\n----------CTR-------AFTER-----------", cur);
+			
+			//storing the result of the xor in the output variable
+			for (unsigned long j=0; j<BLOCKSIZE; j++)	
+			{
+				ciphertext[((cur)*BLOCKSIZE)+j] = b[cur].left[j];
+			}
+		}	
 	}
 
 	return ciphertext;
@@ -111,8 +136,8 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 //Executes encryption in CBC mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
+	struct timeval current_time;
 	unsigned char * ciphertext;
-	unsigned long bcount=0;
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 
@@ -125,32 +150,34 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		prev_ciphertext.right[i] = 65 + i;
 	}
 
-	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
+	//launching the feistel algorithm on every block
+	for (unsigned long i=0; i<bnum; ++i) 
 	{
 		//logging (pre-encryption)
-		printf("\n\n\nblock %lu (CBC-ENC)", bcount);
-		printf("\n---------- BEFORE -----------");
-		print_block(b[bcount].left, b[bcount].right);
+		current_block++;
+		if (i % 1200000 == 0)
+		{
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time);
+		}
+		block_logging(b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
 
 		//XORing the current block x with the ciphertext of the block x-1
-		half_block_xor(b[bcount].left, b[bcount].left, prev_ciphertext.left);
-		half_block_xor(b[bcount].right, b[bcount].right, prev_ciphertext.right);
+		half_block_xor(b[i].left, b[i].left, prev_ciphertext.left);
+		half_block_xor(b[i].right, b[i].right, prev_ciphertext.right);
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
-		process_block(b[bcount].left, b[bcount].right, round_keys);
-		memcpy(&prev_ciphertext, &b[bcount], sizeof(block));
+		process_block(b[i].left, b[i].right, round_keys);
+		memcpy(&prev_ciphertext, &b[i], sizeof(block));
 
 		//logging (post-encryption)
-		printf("---------- AFTER ------------");
-		print_block(b[bcount].left, b[bcount].right);
+		block_logging(b[i], "\n----------CBC(ENC)-------AFTER-----------", i);
 		
 		//storing the ciphered block in the ciphertext variable
 		for (int j=0; j<BLOCKSIZE; j++)	
 		{
-			ciphertext[i+j] = b[bcount].left[j];
+			ciphertext[(i*BLOCKSIZE)+j] = b[i].left[j];
 		}
-		bcount++;
 	}
 
 	return ciphertext;
@@ -159,7 +186,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 //Executes decryption in CBC mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	unsigned long bcount=0;
+	struct timeval current_time;
 	unsigned char * plaintext;
 	plaintext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 	if (plaintext == NULL) return plaintext;
@@ -181,38 +208,39 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	}
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
-	for (unsigned long i=0; i<BLOCKSIZE * bnum; i+=BLOCKSIZE) 
-	{
-
-		if (i % BLOCKSIZE == 0 && bcount < bnum) 
+	#pragma omp parallel for
+	for (unsigned long i=0; i<bnum; ++i) 
+	{	
+		//logging (pre-decryption)
+		#pragma omp critical
+		block_logging(b[i], "\n----------CBC(DEC)-------BEFORE-----------", i);
+		current_block++;
+		if (i % 1200000 == 0)
 		{
-			//logging (pre-decryption)
-			printf("\n\n\nblock %lu (CBC-DEC)", bcount);
-			printf("\n---------- BEFORE -----------");
-			print_block(b[bcount].left, b[bcount].right);
-
-			//First thing, you run feistel on the block,...
-			process_block(b[bcount].left, b[bcount].right, round_keys);
-
-			if (i == 0)		//...if it's the first block, you xor it with the IV...
-			{
-				half_block_xor(b[bcount].left, b[bcount].left, iv.left);
-				half_block_xor(b[bcount].right, b[bcount].right, iv.right);
-			}
-			else	//...whereas for every other ciphered block x, you xor it with x-1 
-			{
-				half_block_xor(b[bcount].left, b[bcount].left, blocks_copy[bcount-1].left);
-				half_block_xor(b[bcount].right, b[bcount].right, blocks_copy[bcount-1].right);
-			}
-
-			//logging (post-decryption)
-			printf("---------- AFTER ------------");
-			print_block(b[bcount].left, b[bcount].right);
-			
-			//storing the deciphered block in plaintext variable
-			for (int j=0; j<BLOCKSIZE; j++)	plaintext[i+j] = b[bcount].left[j];
-			bcount++;
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time);
 		}
+
+		//First thing, you run feistel on the block,...
+		process_block(b[i].left, b[i].right, round_keys);
+
+		if (i == 0)		//...if it's the first block, you xor it with the IV...
+		{
+			half_block_xor(b[i].left, b[i].left, iv.left);
+			half_block_xor(b[i].right, b[i].right, iv.right);
+		}
+		else	//...whereas for every other ciphered block x, you xor it with x-1 
+		{
+			half_block_xor(b[i].left, b[i].left, blocks_copy[(i)-1].left);
+			half_block_xor(b[i].right, b[i].right, blocks_copy[(i)-1].right);
+		}
+
+		//logging (post-decryption)
+		#pragma omp critical
+		block_logging(b[i], "\n----------CBC(DEC)-------AFTER-----------", i);
+		
+		//storing the deciphered block in plaintext variable
+		for (int j=0; j<BLOCKSIZE; j++)	plaintext[(i*BLOCKSIZE)+j] = b[i].left[j];
 
 	}
 

@@ -7,10 +7,11 @@
 #include "utils.h"
 #include "feistel.h"
 #include "opmodes.h"
+#include "omp.h"
 
 //Receives and organizes input data, starts execution of the cipher in encryption mode. 
 //Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
-unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen)
+unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen, unsigned long total_file_size)
 {	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -76,9 +77,6 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, uns
 	   	}
 	}
 
-	fprintf(stderr, "\nin feistel_encrypt: %lu\n", bcount);
-
-
     if (chosen == cbc)
     	return encrypt_cbc_mode(b, bcount, round_keys);
     else if (chosen == ecb)
@@ -117,8 +115,6 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
 	//No need to reallocate: after decryption plaintext will never be greater than the ciphertext was:
 	//it should be okay to just assign the address of the raw input data to the block pointer b
 	block * b = (block *) data;
-
-	fprintf(stderr, "\nin feistel_decrypt: %lu\n", bcount);
 
     if (chosen == cbc)
     	return decrypt_cbc_mode(b, bcount, round_keys);
