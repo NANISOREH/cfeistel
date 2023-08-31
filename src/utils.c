@@ -25,6 +25,15 @@ int half_block_xor(unsigned char * result, unsigned char * first, unsigned char 
 	return 1;
 }
 
+//Does bitwise xor between two blocks by wrapping the half_block_xor function
+int block_xor(block result, block first, block second)
+{
+	half_block_xor(result.left, first.left, second.left);
+	half_block_xor(result.right, first.right, second.right);
+
+	return 1;
+}
+
 //Prints a byte as a binary string
 void print_byte(char c)
 {
@@ -215,7 +224,7 @@ int check_last_block(FILE *stream)
 //Prints progress information
 void show_progress_data(struct timeval current_time)
 {
-	#ifdef NO_PROGRESS
+	#ifdef QUIET
     	return;
 	#endif
 
@@ -237,7 +246,7 @@ double estimate_speed (struct timeval current_time)
 //Prints a certain number of lines given in input and cleans the screen
 void exit_message(int num_strings, ...)
 {
-	#ifdef NO_EXIT_MESSAGE
+	#ifdef QUIET
 		return;
 	#endif
 
@@ -258,10 +267,10 @@ void exit_message(int num_strings, ...)
 }
 
 //Given a block, it prints out its content and checksum
-//Useful for debugging, you can access these per-block logs by compiling with the macro LOG=BLOCK_LOGGING
+//Useful for debugging, you can access these per-block logs by compiling with the macro DEBUG
 void block_logging(block b, const char* message, unsigned long bcount)
 {
-	#ifndef BLOCK_LOGGING
+	#ifndef DEBUG
 		return;
 	#endif
 

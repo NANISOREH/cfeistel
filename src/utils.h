@@ -14,3 +14,4 @@ void exit_message(int num_strings, ...);
 double estimate_speed (struct timeval current_time);
 void block_logging(block b, const char* message, unsigned long bcount);
 double timeval_diff_seconds(struct timeval start, struct timeval end);
+int block_xor(block result, block first, block second);

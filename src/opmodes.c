@@ -115,8 +115,9 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 			process_block(counter_block.left, counter_block.right, round_keys);
 
 			//xor between the ciphered counter block and the current block of plaintext/ciphertext
-			half_block_xor(b[cur].left, b[cur].left, counter_block.left);
-			half_block_xor(b[cur].right, b[cur].right, counter_block.right);
+			// half_block_xor(b[cur].left, b[cur].left, counter_block.left);
+			// half_block_xor(b[cur].right, b[cur].right, counter_block.right);
+			block_xor(b[cur], b[cur], counter_block);
 			
 			//logging (post-processing)
 			#pragma omp critical
@@ -163,8 +164,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		block_logging(b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
 
 		//XORing the current block x with the ciphertext of the block x-1
-		half_block_xor(b[i].left, b[i].left, prev_ciphertext.left);
-		half_block_xor(b[i].right, b[i].right, prev_ciphertext.right);
+		block_xor(b[i], b[i], prev_ciphertext);
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
 		process_block(b[i].left, b[i].right, round_keys);
@@ -224,16 +224,10 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		//First thing, you run feistel on the block,...
 		process_block(b[i].left, b[i].right, round_keys);
 
-		if (i == 0)		//...if it's the first block, you xor it with the IV...
-		{
-			half_block_xor(b[i].left, b[i].left, iv.left);
-			half_block_xor(b[i].right, b[i].right, iv.right);
-		}
-		else	//...whereas for every other ciphered block x, you xor it with x-1 
-		{
-			half_block_xor(b[i].left, b[i].left, blocks_copy[(i)-1].left);
-			half_block_xor(b[i].right, b[i].right, blocks_copy[(i)-1].right);
-		}
+		//...if it's the first block, you xor it with the IV...
+		if (i == 0)	block_xor(b[i], b[i], iv); 
+		//...whereas for every other ciphered block x, you xor it with ciphertext[x-1]
+		else	block_xor(b[i], b[i], blocks_copy[(i)-1]); 
 
 		//logging (post-decryption)
 		#pragma omp critical
@@ -246,4 +240,63 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 
 	free(blocks_copy);
 	return plaintext;
+}
+
+//Executes encryption in ICBC (Interleaved CBC) mode; takes a block array, the total number of blocks and the round keys, returns processed data.
+unsigned char * encrypt_icbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
+{
+	struct timeval current_time;
+	unsigned char * ciphertext;
+	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	if (ciphertext == NULL) return ciphertext;
+
+	//launching the feistel algorithm on every block
+	#pragma omp parallel
+	{
+		//prev_ciphertext will start off with the initialization vector, later it will be used in every iteration x 
+		//to store the ciphertext of block x, needed to encrypt the block x+1
+		block prev_ciphertext;
+		for (int i=0; i<BLOCKSIZE/2; i++)
+		{
+			prev_ciphertext.left[i] = 12 + i;
+			prev_ciphertext.right[i] = 65 + i;
+		}
+
+		//each thread will have its own copy of prev_ciphertext, since they will always have to xor a different block
+		//and the schedule(static, 1) clause will make sure that every thread gets one "turn" and then gives control to the next thread
+		//so that the processing gets correctly interleaved and prev_ciphertext for any thread on iteration i 
+		//always contains the cyphertext of the block [i-n], where n is the number of active threads
+		#pragma omp for private(prev_ciphertext) schedule(static, 1)
+		for (unsigned long i=0; i<bnum; ++i) 
+		{
+			//logging (pre-encryption)
+			current_block++;
+			if (i % 1200000 == 0)
+			{
+				gettimeofday(&current_time, NULL);
+				show_progress_data(current_time);
+			}
+			#pragma omp critical
+			block_logging(b[i], "\n----------ICBC(enc)-------BEFORE-----------", i);
+
+			//XORing the current block x with the ciphertext of the block x-n, where n is the number of active threads
+			block_xor(b[i], b[i], prev_ciphertext);
+			
+			//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
+			process_block(b[i].left, b[i].right, round_keys);
+			memcpy(&prev_ciphertext, &b[i], sizeof(block));
+
+			//logging (post-encryption)
+			#pragma omp critical
+			block_logging(b[i], "\n----------ICBC(enc)-------AFTER-----------", i);
+			
+			//storing the ciphered block in the ciphertext variable
+			for (int j=0; j<BLOCKSIZE; j++)	
+			{
+				ciphertext[(i*BLOCKSIZE)+j] = b[i].left[j];
+			}
+		}
+	}
+
+	return ciphertext;
 }

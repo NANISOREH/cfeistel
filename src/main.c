@@ -167,11 +167,10 @@ int main(int argc, char * argv[])
 		return -1;
 	}
 
-	//calculating and printing the total file size
+	//calculating the total file size and setting start time 
 	fseek(read_file, 0, SEEK_END);
 	total_file_size = ftell(read_file);
 	rewind(read_file);
-	fprintf(stderr, "\nTotal file size: %.2f MB\n\n", (float)total_file_size / (1024.0 * 1024.0));
 	gettimeofday(&start_time, NULL);
 
 	#ifdef SEQUENTIAL
@@ -245,7 +244,7 @@ int main(int argc, char * argv[])
 			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file); 
 		}
 
-		if (final_chunk_flag == 1) //it was the last chunk of data, we're done
+		if (final_chunk_flag == 1) //it was the last chunk of data, we're done, closing files and printing some stats
 		{
 			fclose(read_file);
 			fclose(write_file);
@@ -258,10 +257,13 @@ int main(int argc, char * argv[])
 			gettimeofday(&current_time, NULL);
 			char speed[100];
 			char time[100];
+			char filesize[100];
 			double time_diff = timeval_diff_seconds(start_time, current_time);
 			snprintf(speed, sizeof(speed), "Avg processing speed: %.2f MB/s", estimate_speed(current_time));
 			snprintf(time, sizeof(time), "Time elapsed: %.2f s", time_diff);
-			exit_message(3, "Operation complete!", speed, time);
+			snprintf(filesize, sizeof(filesize), "\nTotal file size: %.2f MB", (float)total_file_size / (1024.0 * 1024.0));
+			exit_message(4, "Operation complete!\n", filesize, speed, time);
+
 			break;
 		}
 
