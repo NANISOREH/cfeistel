@@ -1,5 +1,5 @@
 void print_byte(char c);
-int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second);
+int half_block_xor(unsigned char * result, const unsigned char * first, const unsigned char * second);
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks);
 void split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole);
 void merge_byte(unsigned char * target, unsigned char left_part, unsigned char right_part);
@@ -14,4 +14,4 @@ void exit_message(int num_strings, ...);
 double estimate_speed (struct timeval current_time);
 void block_logging(block b, const char* message, unsigned long bcount);
 double timeval_diff_seconds(struct timeval start, struct timeval end);
-int block_xor(block result, block first, block second);
+void block_xor(block *result, const block *first, const block *second);

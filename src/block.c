@@ -83,8 +83,6 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, uns
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
     	return operate_ctr_mode(b, bcount, round_keys);
-	else if (chosen == icbc)
-		return encrypt_icbc_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -118,7 +116,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
 	//it should be okay to just assign the address of the raw input data to the block pointer b
 	block * b = (block *) data;
 
-    if (chosen == cbc || chosen == icbc)
+    if (chosen == cbc)
     	return decrypt_cbc_mode(b, bcount, round_keys);
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);

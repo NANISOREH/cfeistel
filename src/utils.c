@@ -15,7 +15,7 @@ extern long unsigned current_block;
 extern struct timeval start_time;
 
 //Does bitwise xor between two block halves
-int half_block_xor(unsigned char * result, unsigned char * first, unsigned char * second)
+int half_block_xor(unsigned char * result, const unsigned char * first, const unsigned char * second)
 {
 	for (int i = 0; i<BLOCKSIZE/2; i++)
 	{
@@ -26,12 +26,10 @@ int half_block_xor(unsigned char * result, unsigned char * first, unsigned char 
 }
 
 //Does bitwise xor between two blocks by wrapping the half_block_xor function
-int block_xor(block result, block first, block second)
+void block_xor(block *result, const block *first, const block *second)
 {
-	half_block_xor(result.left, first.left, second.left);
-	half_block_xor(result.right, first.right, second.right);
-
-	return 1;
+	half_block_xor(result->left, first->left, second->left);
+	half_block_xor(result->right, first->right, second->right);
 }
 
 //Prints a byte as a binary string
@@ -55,11 +53,12 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks)
 		last_block[i] = result[index];
 		index++; 
 	}
-
 	unsigned long size;
 	
 	if (sscanf(last_block, "%lu", &size) < 1) //didn't find a number here, decryption key is wrong
+	{
 		return -1;
+	}
 
 	for (unsigned long i = size; i<num_blocks * BLOCKSIZE; i++) 
 		result[i] = '\0';
@@ -250,20 +249,21 @@ void exit_message(int num_strings, ...)
 		return;
 	#endif
 
-    // Clear the line before displaying messages
-    printf("\r%*s\r", 100, "");
-    fflush(stdout);
+	// Clear the line before displaying messages
+	printf("\r%*s\r", 100, "");
+	fflush(stdout);
 
-    va_list args;
-    va_start(args, num_strings);
+	va_list args;
+	va_start(args, num_strings);
 
-    for (int i = 0; i < num_strings; i++) {
-        const char *message = va_arg(args, const char *);
-        printf("\n%s", message);
-    }
+	for (int i = 0; i < num_strings; i++) 
+	{
+		const char *message = va_arg(args, const char *);
+		printf("\n%s", message);
+	}
 
 	printf("\n\n");
-    va_end(args);
+	va_end(args);
 }
 
 //Given a block, it prints out its content and checksum

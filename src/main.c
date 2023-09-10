@@ -18,9 +18,13 @@ char * outfile = "out";
 unsigned char * key;
 int saved_stdout;
 
-unsigned long total_file_size=0;
 //This variable notes the currently processing block relative to the whole file
 //and not just relative the chunk that's currently in the buffer 
+unsigned long total_file_size=0;
+//This one notes the size of the current chunk of data, and it's set by the function that processed it
+//so that it's always known in the main how much data do write out to file, regardless of wheter there's accounting blocks,
+//prepended IV or anything else that might slightly alter the block count
+unsigned long chunk_size=0;
 unsigned long current_block=0; 
 struct timeval start_time;
 
@@ -28,6 +32,11 @@ int command_selection(int argc, char * argv[]);
 
 int command_selection(int argc, char * argv[])
 {
+	if (argc < 2) {
+        fprintf(stderr, "Usage: %s enc|dec [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+        return -1;
+    }
+
 	//command choice, enc or dec
 	if (argv[1]!= NULL && strcmp(argv[1], "enc") == 0)
 	{
@@ -45,6 +54,7 @@ int command_selection(int argc, char * argv[])
 
 	for (int i=2; i<argc; i++)
 	{	
+		//num_blocks = sizeof(result)/BLOCKSIZE;
 		//-k parameter, specified key
 		if (strcmp(argv[i], "-k") == 0)
 		{
@@ -133,6 +143,8 @@ int command_selection(int argc, char * argv[])
 
 int main(int argc, char * argv[]) 
 {
+	if (command_selection(argc, argv) == -1) return -1;
+
 	unsigned char * data;
 	unsigned int final_chunk_flag = 0;
 	key = calloc (KEYSIZE, sizeof(char));
@@ -141,12 +153,11 @@ int main(int argc, char * argv[])
 	unsigned long num_blocks;
 	//this one is the size of the current "pack" of blocks
 	unsigned long size = 0;
+	unsigned int chunk_num = 0;
 
 	FILE * read_file;
 	FILE * write_file;
 	saved_stdout = dup(1);
-
-	command_selection(argc, argv);
 
 	if (output_mode == replace) 
 	{
@@ -156,7 +167,7 @@ int main(int argc, char * argv[])
 	}
 
 	//allocating space for the buffer, opening input and output files
-	data = (unsigned char *)calloc (BUFSIZE, sizeof(unsigned char));
+	data = (unsigned char *)calloc (BUFSIZE + BLOCKSIZE, sizeof(unsigned char));
 	read_file = fopen(infile, "rb");
 	write_file = fopen(outfile, "wb"); //clears the file to avoid appending to an already written file
 	write_file = freopen(outfile, "ab", write_file);
@@ -173,7 +184,7 @@ int main(int argc, char * argv[])
 	rewind(read_file);
 	gettimeofday(&start_time, NULL);
 
-	#ifdef SEQUENTIAL
+	#ifdef SEQ
     	omp_set_num_threads(1);
 	#endif	
 
@@ -182,6 +193,7 @@ int main(int argc, char * argv[])
 	//fread read less than BUFSIZE bytes, but there are borderline cases that are checked in other ways.
 	while (1)
 	{	
+		chunk_num++;
 		//borderline case: if there's only an accounting block going over the BUFSIZE bounds, it's the last chunk.
 		//We'll read an extra block in this iteration to make space for the accounting block in the current chunk.
 		if (to_do == dec && check_last_block(read_file))
@@ -189,8 +201,14 @@ int main(int argc, char * argv[])
 			size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
 			final_chunk_flag = 1;
 		}
+		else if (to_do == dec && chunk_num == 1 && chosen == cbc) //first chunk, we need to read one extra block (header)
+		//only needed in decryption, for modes that require an IV/nonce
+		{
+			size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
+		}
 		else //normally reading BUFSIZE bytes
 		{
+			data = (unsigned char *)realloc(data, BUFSIZE * sizeof(unsigned char));
 			size = fread(data, sizeof(char), BUFSIZE, read_file);
 		}
 
@@ -201,22 +219,13 @@ int main(int argc, char * argv[])
 		}
 		else if (size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
 		else if (check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
-		
-		//figuring out the number of blocks to write to file
-		num_blocks = size/BLOCKSIZE;
-		//In case it's an encryption and we're at the last chunk of data we have to add the extra blocks
-		if (final_chunk_flag == 1 && to_do == enc)
-		{
-			if (size % BLOCKSIZE == 0) //multiple of blocksize, the ciphertext will need one extra block (only the size accounting block)
-				num_blocks++;
-			else //not multiple of blocksize, the ciphertext will need two extra blocks (0-padded block and size accounting block)
-				num_blocks+=2;
-		}
 
 		//starting the correct operation and returning -1 in case there's an error
 		if (to_do == enc) result = encrypt_blocks(data, size, key, chosen);
 		else if (to_do == dec) result = decrypt_blocks(data, size, key, chosen);
 		if (result == NULL) return -1;
+
+		num_blocks = chunk_size/BLOCKSIZE;
 
 		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
 		//and if there's no size written in the last block, it means that the specified decryption key was invalid.
@@ -241,7 +250,7 @@ int main(int argc, char * argv[])
 		}
 		else //in any other case we're using the number of blocks calculated before to determine how much text to write
 		{
-			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file); 
+			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file);
 		}
 
 		if (final_chunk_flag == 1) //it was the last chunk of data, we're done, closing files and printing some stats
