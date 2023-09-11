@@ -30,117 +30,6 @@ struct timeval start_time;
 
 int command_selection(int argc, char * argv[]);
 
-int command_selection(int argc, char * argv[])
-{
-	if (argc < 2) {
-        fprintf(stderr, "Usage: %s enc|dec [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-        return -1;
-    }
-
-	//command choice, enc or dec
-	if (argv[1]!= NULL && strcmp(argv[1], "enc") == 0)
-	{
-		to_do = enc;
-	}
-	else if (argv[1]!= NULL && strcmp(argv[1], "dec") == 0)
-	{
-		to_do = dec;
-	}
-	else
-	{
-		fprintf(stderr, "\nEnter a valid command! (enc/dec)\n\n");
-		return -1;
-	}	
-
-	for (int i=2; i<argc; i++)
-	{	
-		//num_blocks = sizeof(result)/BLOCKSIZE;
-		//-k parameter, specified key
-		if (strcmp(argv[i], "-k") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				key = calloc (KEYSIZE, sizeof(char));
-				strncpy(key, argv[i+1], KEYSIZE);
-				i++;
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty key\n");
-				return -1;
-			}
-		}
-		//-i parameter, specified input file
-		else if (strcmp(argv[i], "-i") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				infile = calloc (strlen(argv[i+1]), sizeof(char));
-				strcpy(infile, argv[i+1]);
-				i++;
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty filename\n");
-				return -1;
-			}
-		}
-		//-o parameter, specified output file
-		else if (strcmp(argv[i], "-o") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				outfile = malloc (strlen(argv[i+1]) * sizeof(char));
-				strcpy(outfile, argv[i+1]);
-				i++;
-				output_mode = specified;
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty filename\n");
-				return -1;
-			}
-		}
-		//-m parameter, specified mode of operation
-		else if (strcmp(argv[i], "-m") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				if (strcmp(argv[i+1], "ecb") == 0)
-				{
-					chosen = ecb;
-					i++;
-				}
-				else if (strcmp(argv[i+1], "cbc") == 0) 
-				{
-					chosen = cbc;
-					i++;
-				}
-				else if (strcmp(argv[i+1], "ctr") == 0) 
-				{
-					chosen = ctr;
-					i++;
-				}
-				else
-				{
-					fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
-					return -1;
-				}
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty filename!\n");
-				return -1;
-			}
-		}
-		else
-		{
-			fprintf(stderr, "\nUnknown parameter '%s'\n", argv[i]);
-			return -1;
-		}
-	}
-}
-
 int main(int argc, char * argv[]) 
 {
 	if (command_selection(argc, argv) == -1) return -1;
@@ -284,5 +173,123 @@ int main(int argc, char * argv[])
 	}
 
 	return 0;
+}
+
+int command_selection(int argc, char * argv[])
+{
+	if (argc < 2) {
+        fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+        return -1;
+    }
+
+	//command choice, enc or dec
+	if (argv[1]!= NULL && strcmp(argv[1], "enc") == 0)
+	{
+		to_do = enc;
+	}
+	else if (argv[1]!= NULL && strcmp(argv[1], "dec") == 0)
+	{
+		to_do = dec;
+	}
+	else
+	{
+		fprintf(stderr, "\nEnter a valid command! (enc/dec)\n");
+		fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+		return -1;
+	}	
+
+	for (int i=2; i<argc; i++)
+	{	
+		//num_blocks = sizeof(result)/BLOCKSIZE;
+		//-k parameter, specified key
+		if (strcmp(argv[i], "-k") == 0)
+		{
+			if (argv[i+1]!=NULL)
+			{
+				key = calloc (KEYSIZE, sizeof(char));
+				strncpy(key, argv[i+1], KEYSIZE);
+				i++;
+			} 
+			else
+			{
+				fprintf(stderr, "\nEnter a non-empty key\n");
+				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+				return -1;
+			}
+		}
+		//-i parameter, specified input file
+		else if (strcmp(argv[i], "-i") == 0)
+		{
+			if (argv[i+1]!=NULL)
+			{
+				infile = calloc (strlen(argv[i+1]), sizeof(char));
+				strcpy(infile, argv[i+1]);
+				i++;
+			} 
+			else
+			{
+				fprintf(stderr, "\nEnter a non-empty filename\n");
+				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+				return -1;
+			}
+		}
+		//-o parameter, specified output file
+		else if (strcmp(argv[i], "-o") == 0)
+		{
+			if (argv[i+1]!=NULL)
+			{
+				outfile = malloc (strlen(argv[i+1]) * sizeof(char));
+				strcpy(outfile, argv[i+1]);
+				i++;
+				output_mode = specified;
+			} 
+			else
+			{
+				fprintf(stderr, "\nEnter a non-empty filename\n");
+				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+				return -1;
+			}
+		}
+		//-m parameter, specified mode of operation
+		else if (strcmp(argv[i], "-m") == 0)
+		{
+			if (argv[i+1]!=NULL)
+			{
+				if (strcmp(argv[i+1], "ecb") == 0)
+				{
+					chosen = ecb;
+					i++;
+				}
+				else if (strcmp(argv[i+1], "cbc") == 0) 
+				{
+					chosen = cbc;
+					i++;
+				}
+				else if (strcmp(argv[i+1], "ctr") == 0) 
+				{
+					chosen = ctr;
+					i++;
+				}
+				else
+				{
+					fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
+					fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+					return -1;
+				}
+			} 
+			else
+			{
+				fprintf(stderr, "\nEnter a non-empty filename!\n");
+				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+				return -1;
+			}
+		}
+		else
+		{
+			fprintf(stderr, "\nUnknown parameter '%s'\n", argv[i]);
+			fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+			return -1;
+		}
+	}
 }
  

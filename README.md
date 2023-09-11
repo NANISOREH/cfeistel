@@ -14,10 +14,11 @@ The <code>SEQ</code> compiler flag disables parallelization and executes the cip
 The <code>QUIET</code> compiler flag disables the usual info output.</p>
 
 # Usage
-`./cfeistel enc|dec [-k key][-i infile][-o outfile][-m mode]`
+`./cfeistel <enc|dec> [-k key][-i infile][-o outfile][-m mode]`
 
+- `enc` provides encryption and `dec` provides decryption.  
 - `-k` specifies a string to be used as a key.
-- `-m` accepts *ecb*, *cbc*, and *ctr*.
+- `-m` specifies the mode of operation, and accepts *ecb*, *cbc*, and *ctr*.
 - `-i` specifies the input file to be encrypted or decrypted.
 - `-o` specifies the output file where the result will be written.
 
@@ -28,12 +29,16 @@ In case the user specifies an input file but not an output file, the source will
 # Test script
 I included a shell script that greatly facilitates testing, by automatically compiling the program, creating a file of any desired size, performing encryption and decryption and comparing the md5 checksum of the result against pre-encyption data to determine if the process worked as it should.
 
-Usage: <code>./test.sh [-mb] <file_size> [-m <mode>] [debug]</code>
+Usage: <code>./test.sh [-mb] <file_size> [-m <mode>] [-d] [-t]</code>
 
 - `file_size` specifies the size of the file that the script will generate expressed, by default, in bytes
-- `-mb` specifies a file size in MBs rather than in bytes.
-- `-m` specifies which operation mode to test, and accepts the same modes as the cfeistel executable.
-- `debug` enables block-by-block logging and redirects the logging output to a text file.
+- `-mb` specifies that the given file size is expressed in MBs rather than in bytes.
+- `-m <mode>` specifies which operation mode to test, and accepts the same modes as the cfeistel executable.
+- `-d` enables block-by-block logging and redirects the logs of encryption and decryption to text files.
+- `-t` makes the script perform encryption and decryption on a human-readable text file instead of reading random bytes from /dev/urandom.
+
+Note that the `-d` option will only be accepted if the set size is 1mb (1048576 bytes) or less, to avoid the creation of huge text files.
+In case `-d` and `-t` are used together, both the generated text file and the result of the decryption will be appended to the log files.
 
 # Known issues
 - As of now, the cipher in any mode won't work properly if the input file size is an exact multiple of the buffer size I chose (100MB, or 104857600 bytes).
