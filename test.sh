@@ -5,6 +5,8 @@ file_size=0
 unit_flag="B"  # Default to bytes
 encryption_mode="ctr" 
 debug_mode=false  
+enc_key="secretkey"
+dec_key="secretkey"
 create_text_file=false  # Default to generating random bytes
 
 # Function to convert megabytes to bytes
@@ -27,7 +29,7 @@ generate_random_text() {
 
 # Function to display script usage
 display_usage() {
-    echo "Usage: $0 [-mb] <file_size> [-m <mode>] [-t] [debug]"
+    echo "Usage: $0 ./test.sh [-mb] <file_size> [-m <mode>] [-k <key>] [-dk <dec_key>] [-ek <enc_key>]  [-d] [-t]"
 }
 
 # Function to append the content of one file to another
@@ -67,8 +69,7 @@ check_make_output() {
 
 # Process command line arguments
 while [ "$#" -gt 0 ]; do
-    case "$1" in        # Append the content of the decrypted "in" file to dec_debug.txt
-
+    case "$1" in      
         -mb)
             unit_flag="MB"
             shift
@@ -76,6 +77,22 @@ while [ "$#" -gt 0 ]; do
         -m|--mode)
             shift
             encryption_mode="$1"
+            shift
+            ;;
+        -k|--key)
+            shift
+            enc_key="$1"
+            dec_key="$1"
+            shift
+            ;;
+        -dk|--deckey)
+            shift
+            dec_key="$1"
+            shift
+            ;;
+        -ek|--enckey)
+            shift
+            enc_key="$1"
             shift
             ;;
         -t|--text)
@@ -131,8 +148,10 @@ else
     echo "  File Size: $file_size bytes"
 fi
 echo "  Encryption Mode: $encryption_mode"
-echo "  Debug Mode: $debug_mode"  # Display debug mode status
-echo "  Create Text File: $create_text_file"  # Display text file creation status
+echo "  Debug Mode: $debug_mode" 
+echo "  Text Mode: $create_text_file" 
+echo "  Encryption Key: $enc_key" 
+echo "  Decryption Key: $dec_key" 
 
 # Calculate and store the MD5 checksum of the original "in" file
 original_md5sum=$(md5sum "in" | awk '{print $1}')
@@ -144,7 +163,7 @@ if [ "$debug_mode" = true ]; then
     # Recompile and execute the program in encryption with debug flags (block logging is redirected to files)
     make CFLAGS="-DDEBUG -DQUIET -DSEQ" > "$make_output_file" 2>&1
     check_make_output "$make_output_file"
-    { ./cfeistel enc -m "$encryption_mode" -i "in" -o "out"; } > "enc_debug.txt" 2>&1
+    { ./cfeistel enc -m "$encryption_mode" -k "$enc_key" -i "in" -o "out"; } > "enc_debug.txt" 2>&1
 
     # Check if the "text" option is enabled and append the content of the generated "in" text file to enc_debug.txt
     if [ "$create_text_file" = true ]; then
@@ -152,7 +171,7 @@ if [ "$debug_mode" = true ]; then
     fi
 
     # Execute the program in decryption
-    { ./cfeistel dec -m "$encryption_mode" -i "out" -o "in"; } > "dec_debug.txt" 2>&1
+    { ./cfeistel dec -m "$encryption_mode" -k "$dec_key" -i "out" -o "in"; } > "dec_debug.txt" 2>&1
 
     # Check if the "text" option is enabled and append the content of the decrypted "in" text file to dec_debug.txt
     if [ "$create_text_file" = true ]; then
@@ -161,8 +180,8 @@ if [ "$debug_mode" = true ]; then
 else
     make CFLAGS="-DQUIET" > "$make_output_file" 2>&1
     check_make_output "$make_output_file"
-    ./cfeistel enc -m "$encryption_mode" -i "in" -o "out"
-    ./cfeistel dec -m "$encryption_mode" -i "out" -o "in"
+    ./cfeistel enc -m "$encryption_mode" -k "$enc_key" -i "in" -o "out"
+    ./cfeistel dec -m "$encryption_mode" -k "$dec_key" -i "out" -o "in"
 fi
 
 
@@ -171,10 +190,11 @@ decrypted_md5sum=$(md5sum "in" | awk '{print $1}')
 
 # Check if the MD5 checksums match
 if [ "$original_md5sum" == "$decrypted_md5sum" ]; then
-    echo "Encryption and decryption successful. MD5 checksums match."
+    echo -e "\e[32m\nEncryption and decryption successful. MD5 checksums match.\n\e[0m" 
 else
-    echo "Error: MD5 checksums do not match. Encryption or decryption failed."
+    echo -e "\e[31m\nError: MD5 checksums do not match. Encryption or decryption failed.\n\e[0m"  
 fi
+
 
 # Clean up temporary files
 rm "in" "out" "cfeistel"

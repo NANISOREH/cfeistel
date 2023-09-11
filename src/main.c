@@ -32,8 +32,6 @@ int command_selection(int argc, char * argv[]);
 
 int main(int argc, char * argv[]) 
 {
-	if (command_selection(argc, argv) == -1) return -1;
-
 	unsigned char * data;
 	unsigned int final_chunk_flag = 0;
 	key = calloc (KEYSIZE, sizeof(char));
@@ -42,6 +40,8 @@ int main(int argc, char * argv[])
 	unsigned long num_blocks;
 	unsigned int chunk_num = 0;
 
+	if (command_selection(argc, argv) == -1) return -1;
+	
 	FILE * read_file;
 	FILE * write_file;
 	saved_stdout = dup(1);

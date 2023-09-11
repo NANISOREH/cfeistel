@@ -14,7 +14,7 @@ The <code>SEQ</code> compiler flag disables parallelization and executes the cip
 The <code>QUIET</code> compiler flag disables the usual info output.</p>
 
 # Usage
-`./cfeistel <enc|dec> [-k key][-i infile][-o outfile][-m mode]`
+`./cfeistel <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]`
 
 - `enc` provides encryption and `dec` provides decryption.  
 - `-k` specifies a string to be used as a key.
@@ -28,11 +28,14 @@ If no parameters are specified default values are used.
 # Test script
 I included a shell script that greatly facilitates testing, by automatically compiling the program, creating a file of any desired size, performing encryption and decryption and comparing the md5 checksum of the result against pre-encyption data to determine if the process worked as it should.
 
-Usage: <code>./test.sh [-mb] <file_size> [-m <mode>] [-d] [-t]</code>
+Usage: <code>./test.sh [-mb] <file_size> [-m <mode>] [-k <key>] [-dk <dec_key>] [-ek <enc_key>]  [-d] [-t]</code>
 
 - `file_size` specifies the size of the file that the script will generate expressed, by default, in bytes
 - `-mb` specifies that the given file size is expressed in MBs rather than in bytes.
 - `-m <mode>` specifies which operation mode to test, and accepts the same modes as the cfeistel executable.
+- `-k <key>` specifies the key string to use for both encryption and decryption.
+- `-dk <dec_key>` specifies the key string to use for decryption.
+- `-ek <enc_key>` specifies the key string to use for encryption.
 - `-d` enables block-by-block logging and redirects the logs of encryption and decryption to text files.
 - `-t` makes the script perform encryption and decryption on a human-readable text file instead of reading random bytes from /dev/urandom.
 
