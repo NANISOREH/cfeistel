@@ -9,6 +9,7 @@
 #include "block.h"
 #include "sys/time.h"
 #include "omp.h"
+#include "getopt.h"
 
 enum mode chosen = DEFAULT_MODE;
 enum operation to_do = DEFAULT_OP;
@@ -41,7 +42,7 @@ int main(int argc, char * argv[])
 	unsigned int chunk_num = 0;
 
 	if (command_selection(argc, argv) == -1) return -1;
-	
+
 	FILE * read_file;
 	FILE * write_file;
 	saved_stdout = dup(1);
@@ -167,120 +168,67 @@ int main(int argc, char * argv[])
 	return 0;
 }
 
-int command_selection(int argc, char * argv[])
+int command_selection(int argc, char *argv[]) 
 {
-	if (argc < 2) {
-        fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-        return -1;
+    int opt;
+
+    // Define the options and their arguments
+    static struct option long_options[] = 
+	{
+        {"key", required_argument, NULL, 'k'},
+        {"infile", required_argument, NULL, 'i'},
+        {"outfile", required_argument, NULL, 'o'},
+        {"mode", required_argument, NULL, 'm'},
+        {NULL, 0, NULL, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, "k:i:o:m:", long_options, NULL)) != -1) 
+	{
+        switch (opt) 
+		{
+            case 'k':
+                key = optarg;
+                break;
+            case 'i':
+                infile = optarg;
+                break;
+            case 'o':
+                outfile = optarg;
+                output_mode = specified;
+                break;
+            case 'm':
+                if (strcmp(optarg, "ecb") == 0)
+                    chosen = ecb;
+                else if (strcmp(optarg, "cbc") == 0)
+                    chosen = cbc;
+                else if (strcmp(optarg, "ctr") == 0)
+                    chosen = ctr;
+                else 
+				{
+                    fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
+                    fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+                    return -1;
+                }
+                break;
+            default:
+                fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
+                return -1;
+        }
     }
 
-	//command choice, enc or dec
-	if (argv[1]!= NULL && strcmp(argv[1], "enc") == 0)
+    // Check if the operation (enc or dec) is provided as a positional argument
+    if (optind < argc) 
 	{
-		to_do = enc;
-	}
-	else if (argv[1]!= NULL && strcmp(argv[1], "dec") == 0)
-	{
-		to_do = dec;
-	}
-	else
-	{
-		fprintf(stderr, "\nEnter a valid command! (enc/dec)\n");
-		fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-		return -1;
-	}	
+        if (strcmp(argv[optind], "enc") == 0)
+            to_do = enc;
+        else if (strcmp(argv[optind], "dec") == 0)
+            to_do = dec;
+        else {
+            fprintf(stderr, "Invalid operation: %s\n", argv[optind]);
+            return -1;
+        }
+    }
 
-	for (int i=2; i<argc; i++)
-	{	
-		//-k parameter, specified key
-		if (strcmp(argv[i], "-k") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				key = calloc (KEYSIZE, sizeof(char));
-				strncpy(key, argv[i+1], KEYSIZE);
-				i++;
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty key\n");
-				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-				return -1;
-			}
-		}
-		//-i parameter, specified input file
-		else if (strcmp(argv[i], "-i") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				infile = calloc (strlen(argv[i+1]), sizeof(char));
-				strcpy(infile, argv[i+1]);
-				i++;
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty filename\n");
-				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-				return -1;
-			}
-		}
-		//-o parameter, specified output file
-		else if (strcmp(argv[i], "-o") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				outfile = malloc (strlen(argv[i+1]) * sizeof(char));
-				strcpy(outfile, argv[i+1]);
-				i++;
-				output_mode = specified;
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty filename\n");
-				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-				return -1;
-			}
-		}
-		//-m parameter, specified mode of operation
-		else if (strcmp(argv[i], "-m") == 0)
-		{
-			if (argv[i+1]!=NULL)
-			{
-				if (strcmp(argv[i+1], "ecb") == 0)
-				{
-					chosen = ecb;
-					i++;
-				}
-				else if (strcmp(argv[i+1], "cbc") == 0) 
-				{
-					chosen = cbc;
-					i++;
-				}
-				else if (strcmp(argv[i+1], "ctr") == 0) 
-				{
-					chosen = ctr;
-					i++;
-				}
-				else
-				{
-					fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
-					fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-					return -1;
-				}
-			} 
-			else
-			{
-				fprintf(stderr, "\nEnter a non-empty filename!\n");
-				fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-				return -1;
-			}
-		}
-		else
-		{
-			fprintf(stderr, "\nUnknown parameter '%s'\n", argv[i]);
-			fprintf(stderr, "Usage: %s <enc|dec> [-k key] [-i infile] [-o outfile] [-m mode]\n", argv[0]);
-			return -1;
-		}
-	}
+    return 0;
 }
  

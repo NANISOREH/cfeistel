@@ -1,5 +1,5 @@
 # cfeistel
-<p>Implementation of a basic Feistel cipher in C. Needless to say, it's just an exercise and NOT intended to be used as actual crypto.
+<p>Implementation of a basic Feistel cipher in C. Needless to say, it's just a glorified C programming exercise and NOT intended to be used as actual crypto.
 It operates on 16 bytes blocks and an 8 bytes key, in CBC, ECB and CTR mode, on files of any size.
 The key is given as an input string as of now, but I'm going to make it possible to specify a file as key.</p>
 <p>The "f" part of the cipher has no real cryptographic value but still serves the purpose of showing a Feistel cipher in motion. It aspires to be a very simple SP network.</p>
@@ -44,4 +44,5 @@ In case `-d` and `-t` are used together, both the generated text file and the re
 
 # Known issues
 - The IV generation for CBC and CTR modes is basicly just a placeholder for now. It's simply derived from the key, so it's neither random nor unpredictable. This cipher does not aspire to be actually <em>secure</em>, but I'd still like to provide a decent approximation of how a cryptographically sound Feistel cipher might look like.
-- Command selection is pretty messy and probably really easy to break. There's probably plenty of libraries that implement off-the-shelf command selection for POSIX-y programs, I should look into that rather than build on my own undercooked spaghetti. 
+- The cipher is using an 8 byte round key, and as of now the program ignores every input character after the 8-th. "SecretkeyA" and "SecretkeyB" are considered the same. I'd like to handle this a bit better, maybe by revising the key scheduling in such a way that, despite still using an 8 byte chunk of the key for each round, the cipher still takes into consideration the fact that the user entered a different key.
+- As I already touched upon, the "f" black box that implements the SP network is made with a <em>just do something</em> mentality. It parrots DES a little bit. I do intend on studying what makes an SP network cryptographically sound and how to design one that's a bit more thought out.
