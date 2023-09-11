@@ -1,7 +1,7 @@
 #define BUFSIZE 104857600
 #define DEFAULT_MODE ctr
 #define DEFAULT_OP enc
-#define DEFAULT_OUT replace
+#define DEFAULT_OUT specified
 #define BLOCKSIZE 16
 #define KEYSIZE BLOCKSIZE/2
 #define NROUND 10

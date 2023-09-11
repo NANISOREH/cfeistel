@@ -152,9 +152,6 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	}
 	if (ciphertext == NULL) return ciphertext;
 	
-
-	block_logging(iv, "\n----------CBC(ENC)-------IV-----------", 0);
-
 	//prev_ciphertext will start off with the initialization vector, later it will be used in every iteration x 
 	//to store the ciphertext of block x, needed to encrypt the block x+1
 	block prev_ciphertext = iv;

@@ -55,7 +55,7 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks)
 	}
 	unsigned long size;
 	
-	if (sscanf(last_block, "%lu", &size) < 1) //didn't find a number here, decryption key is wrong
+	if (sscanf(last_block, "%lu", &size) < 1) //didn't find a number here, no accounting block
 	{
 		return -1;
 	}

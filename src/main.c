@@ -40,8 +40,6 @@ int main(int argc, char * argv[])
 	strncpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
-	//this one is the size of the current "pack" of blocks
-	unsigned long size = 0;
 	unsigned int chunk_num = 0;
 
 	FILE * read_file;
@@ -87,31 +85,31 @@ int main(int argc, char * argv[])
 		//We'll read an extra block in this iteration to make space for the accounting block in the current chunk.
 		if (to_do == dec && check_last_block(read_file))
 		{
-			size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
+			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
 			final_chunk_flag = 1;
 		}
 		else if (to_do == dec && chunk_num == 1 && chosen == cbc) //first chunk, we need to read one extra block (header)
 		//only needed in decryption, for modes that require an IV/nonce
 		{
-			size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
+			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
 		}
 		else //normally reading BUFSIZE bytes
 		{
 			data = (unsigned char *)realloc(data, BUFSIZE * sizeof(unsigned char));
-			size = fread(data, sizeof(char), BUFSIZE, read_file);
+			chunk_size = fread(data, sizeof(char), BUFSIZE, read_file);
 		}
 
-		if (size < 0) //reading error
+		if (chunk_size < 0) //reading error
 		{
 			exit_message(1, "Input file not readable!");
 			return -1;
 		}
-		else if (size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
+		else if (chunk_size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
 		else if (check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
 
 		//starting the correct operation and returning -1 in case there's an error
-		if (to_do == enc) result = encrypt_blocks(data, size, key, chosen);
-		else if (to_do == dec) result = decrypt_blocks(data, size, key, chosen);
+		if (to_do == enc) result = encrypt_blocks(data, chunk_size, key, chosen);
+		else if (to_do == dec) result = decrypt_blocks(data, chunk_size, key, chosen);
 		if (result == NULL) return -1;
 
 		num_blocks = chunk_size/BLOCKSIZE;
@@ -120,22 +118,16 @@ int main(int argc, char * argv[])
 		//and if there's no size written in the last block, it means that the specified decryption key was invalid.
 		if (to_do == dec && final_chunk_flag == 1) 
 		{ 
-			size = remove_padding(result, num_blocks);
-			
+			//Removing padding from this chunk
+			chunk_size = remove_padding(result, num_blocks);
+
 			//if the last chunk only contains an accounting block saying the chunk has 0 bytes, it means that the last chunk was
 			//completely full and feistel_decrypt didn't detect it as "last chunk". In this case we can just use BUFSIZE as size.
-			//It works, but I might want to find a less hacky solution to this issue.
-			if (size == 0) 
-			{
-				size = BUFSIZE;
-			}
-			else if (size == -1) //no accounting block found in the last chunk, invalid key
-			{
-				exit_message(1, "Wrong decryption key used!");
-				remove(outfile);
-				return -1;
-			}
-			fwrite(result, size, 1, write_file); 
+			//In the same way, if chunk_size was set to -1 by remove_padding it means there was no accounting block, and that means
+			//that the input file's size was a perfect multiple of BUFSIZE
+			if (chunk_size == 0 || chunk_size == -1) chunk_size = BUFSIZE;
+
+			fwrite(result, chunk_size, 1, write_file); 
 		}
 		else //in any other case we're using the number of blocks calculated before to determine how much text to write
 		{
@@ -166,7 +158,7 @@ int main(int argc, char * argv[])
 		}
 
 		//zeroing data for the processed chunk from memory after writing it to file so that it cannot be dumped from memory
-		memset(data, 0, size);
+		memset(data, 0, chunk_size);
 		memset(result, 0, num_blocks * BLOCKSIZE);
 		
 		free(result);
@@ -200,7 +192,6 @@ int command_selection(int argc, char * argv[])
 
 	for (int i=2; i<argc; i++)
 	{	
-		//num_blocks = sizeof(result)/BLOCKSIZE;
 		//-k parameter, specified key
 		if (strcmp(argv[i], "-k") == 0)
 		{
