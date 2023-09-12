@@ -3,7 +3,7 @@ int half_block_xor(unsigned char * result, const unsigned char * first, const un
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks);
 void split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole);
 void merge_byte(unsigned char * target, unsigned char left_part, unsigned char right_part);
-void stringify_counter(unsigned char * string, unsigned long counter);
+void stringify_counter(unsigned char string[BLOCKSIZE], unsigned long counter);
 void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_first, unsigned int pos_second);
 void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size);
 void str_safe_print(unsigned char * to_print, unsigned long size);
@@ -15,3 +15,5 @@ double estimate_speed (struct timeval current_time);
 void block_logging(block b, const char* message, unsigned long bcount);
 double timeval_diff_seconds(struct timeval start, struct timeval end);
 void block_xor(block *result, const block *first, const block *second);
+int create_nonce(unsigned char nonce[BLOCKSIZE]);
+void block_from_byte_array(block * b, unsigned char data[BLOCKSIZE]);

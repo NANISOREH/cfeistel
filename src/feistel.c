@@ -104,7 +104,7 @@ void s_box(unsigned char * byte, int side)
 }
 
 //64-bit permutation box
-void p_box(unsigned char * data)
+void p_box(unsigned char data[BLOCKSIZE/2])
 {
 	swap_bit(&data[0], &data[7], 2, 4);
 	swap_bit(&data[0], &data[7], 1, 6);

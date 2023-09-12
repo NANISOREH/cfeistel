@@ -3,10 +3,12 @@
 # Initialize variables with default values
 file_size=0  
 unit_flag="B"  
-encryption_mode="ctr" 
+encryption_mode="ecb" 
 debug_mode=false  
+parallel_debug_mode=false
 enc_key="secretkey"
 dec_key="secretkey"
+cflags="-DQUIET"
 create_text_file=false  
 
 # Converts megabytes to bytes
@@ -84,9 +86,19 @@ generate_repeated_data() {
     truncate -s "$file_size" "in"
 }
 
-# Displays script usage
-display_usage() {
-    echo "Usage: $0 ./test.sh [-mb] <file_size> [-m <mode>] [-k <key>] [-dk <dec_key>] [-ek <enc_key>]  [-d] [-t]"
+function display_usage() {
+    echo "Usage: test.sh [options]"
+    echo "Options:"
+    echo "  -mb                  Use megabytes as unit for file size (default is bytes)"
+    echo "  -m, --mode <mode>    Encryption mode (e.g., -m encrypt)"
+    echo "  -k, --key <key>      Encryption and decryption key"
+    echo "  -ek, --enckey <key>  Encryption key"
+    echo "  -dk, --deckey <key>  Decryption key"
+    echo "  -t, --text           Create a text file (size limit: 1MB)"
+    echo "  -d, --debug          Enable debug mode (size limit: 1MB)"
+    echo "  -dp, --debug-parallel Enable parallel debug mode (size limit: 1MB)"
+    echo "  -r, --repeat         Enable repeated block mode"
+    echo "  <file_size>          File size in bytes (numeric argument)"
 }
 
 # Appends the content of one file to another
@@ -155,16 +167,20 @@ while [ "$#" -gt 0 ]; do
         -t|--text)
             # Check if the file size is less than 1MB (in megabytes) or 1048576 bytes
             if [ "$unit_flag" == "MB" ] && [ "$file_size" -gt 1 ]; then
-                echo "Error: Debug mode is only supported for files smaller than 1MB."
+                echo "Error: Text mode is only supported for files smaller than 1MB."
                 exit unction to check1
             elif [ "$unit_flag" != "MB" ] && [ "$file_size" -gt 1048576 ]; then
-                echo "Error: Debug mode is only supported for files smaller than 1MB."
+                echo "Error: Text mode is only supported for files smaller than 1MB."
                 exit 1
             fi
             create_text_file=true  # Enable text file creation
             shift
             ;;
         -d|--debug)
+            if [ "$debug_parallel_mode" == true ]; then
+                echo "Error: -d and -dp are mutually exclusive."
+                exit 1
+            fi
             # Check if the file size is less than 1MB (in megabytes) or 1048576 bytes
             if [ "$unit_flag" == "MB" ] && [ "$file_size" -gt 1 ]; then
                 echo "Error: Debug mode is only supported for files smaller than 1MB."
@@ -174,6 +190,24 @@ while [ "$#" -gt 0 ]; do
                 exit 1
             fi
             debug_mode=true  # Enable debug mode
+            cflags="-DDEBUG -DQUIET -DSEQ"
+            shift
+            ;;
+        -dp|--debug-parallel)
+            if [ "$debug_mode" == true ]; then
+                echo "Error: -d and -dp are mutually exclusive."
+                exit 1
+            fi
+            # Check if the file size is less than 1MB (in megabytes) or 1048576 bytes
+            if [ "$unit_flag" == "MB" ] && [ "$file_size" -gt 1 ]; then
+                echo "Error: Debug mode is only supported for files smaller than 1MB."
+                exit 1
+            elif [ "$unit_flag" != "MB" ] && [ "$file_size" -gt 1048576 ]; then
+                echo "Error: Debug mode is only supported for files smaller than 1MB."
+                exit 1
+            fi
+            parallel_debug_mode=true  # Enable debug mode
+            cflags="-DDEBUG -DQUIET"
             shift
             ;;
         -r|--repeat)
@@ -235,10 +269,10 @@ original_md5sum=$(md5sum "in" | awk '{print $1}')
 # Create a temporary file for make output
 make_output_file=$(mktemp)
 
-if [ "$debug_mode" = true ]; then
-    # Recompile and execute the program in encryption with debug flags (block logging is redirected to files)
-    # The make output is redirected to a temp file and then grepped to only show relevant lines
-    make CFLAGS="-DDEBUG -DQUIET -DSEQ" > "$make_output_file" 2>&1
+# Recompile and execute the program in encryption with debug flags (block logging is redirected to files)
+# The make output is redirected to a temp file and then grepped to only show relevant lines
+if [ "$debug_mode" = true ] || [ "$parallel_debug_mode" = true ]; then
+    make CFLAGS="$cflags" > "$make_output_file" 2>&1
     check_make_output "$make_output_file"
     { ./cfeistel enc -m "$encryption_mode" -k "$enc_key" -i "in" -o "out"; } > "enc_debug.txt" 2>&1
 
@@ -255,9 +289,9 @@ if [ "$debug_mode" = true ]; then
         append_to_file "dec_debug.txt" "in" "\n\nContent of decrypted 'in' file:"
     fi
 else
-    # Recompile and execute the program in encryption and decryption
+    # Recompile and execute the program in encryption and decryption with default flags
     # The make output is redirected to a temp file and then grepped to only show relevant lines
-    make CFLAGS="-DQUIET" > "$make_output_file" 2>&1
+    make CFLAGS="$cflags" > "$make_output_file" 2>&1
     check_make_output "$make_output_file"
     ./cfeistel enc -m "$encryption_mode" -k "$enc_key" -i "in" -o "out"
     ./cfeistel dec -m "$encryption_mode" -k "$dec_key" -i "out" -o "in"

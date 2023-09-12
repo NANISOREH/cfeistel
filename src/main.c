@@ -36,7 +36,7 @@ int main(int argc, char * argv[])
 	unsigned char * data;
 	unsigned int final_chunk_flag = 0;
 	key = calloc (KEYSIZE, sizeof(char));
-	strncpy(key, "secretkey", KEYSIZE);
+	memcpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
 	unsigned int chunk_num = 0;
@@ -187,7 +187,7 @@ int command_selection(int argc, char *argv[])
         switch (opt) 
 		{
             case 'k':
-                key = optarg;
+                memcpy(key, "secretkey", KEYSIZE);
                 break;
             case 'i':
                 infile = optarg;

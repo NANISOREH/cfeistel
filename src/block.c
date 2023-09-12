@@ -82,7 +82,7 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, uns
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode(b, bcount, round_keys);
+    	return encrypt_ctr_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -121,7 +121,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode(b, bcount, round_keys);
+    	return decrypt_ctr_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -149,5 +149,4 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 		//the final result is an extended key stored in the round_keys matrix
 		str_safe_copy(round_keys[j], master_key, KEYSIZE);
 	} 
-
 }
