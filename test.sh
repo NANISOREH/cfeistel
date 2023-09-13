@@ -131,6 +131,64 @@ check_make_output() {
     fi
 }
 
+sort_blocks() {
+    file="$1"
+
+    # Temporary file
+    temp_file="temp"
+
+    # Initialize an associative array to store blocks by block number
+    declare -A blocks
+
+    # Initialize variables
+    current_block=""
+    in_block=false
+    current_thread=""
+    delimiter=""
+
+    # Open input file for reading
+    exec 3< "$file"
+
+    while IFS= read -r line <&3; do
+        if [[ $line =~ ^=+$ ]]; then
+        # Delimiter line
+        delimiter="$line"
+        elif [[ $line =~ ^block[[:space:]]([0-9]+)[[:space:]]processed[[:space:]]by[[:space:]]the[[:space:]]thread[[:space:]]([0-9]+) ]]; then
+        # Block header line
+        block_number="${BASH_REMATCH[1]}"
+        current_thread="${BASH_REMATCH[2]}"
+        in_block=true
+        current_block="$delimiter\nBlock $block_number processed by the thread $current_thread\n"
+        elif [[ $line =~ ^=+$ && $in_block == true ]]; then
+        # End of block
+        in_block=false
+        blocks["$block_number:$current_thread"]+="$current_block$line"
+        current_block=""
+        delimiter=""
+        elif [ "$in_block" == true ]; then
+        # Inside block, append line
+        current_block+="$line\n"
+        fi
+    done
+
+    # Close input file
+    exec 3<&-
+
+    # Sort the blocks by block number and thread number
+    sorted_block_numbers=($(echo "${!blocks[@]}" | tr ' ' '\n' | sort -t':' -k1,1n -k2,2n))
+
+    # Write the sorted blocks to the temporary file, preserving delimiters and spacing
+    for block_info in "${sorted_block_numbers[@]}"; do
+        IFS=':' read -r block_number thread_number <<< "$block_info"
+        echo -e "${blocks[$block_info]}" >> "$temp_file"
+    done
+
+    # Replace the original file with the sorted content
+    mv "$temp_file" "$file"
+}
+
+
+
 if [ "$#" -eq 0 ]; then
     display_usage
     exit 1
@@ -279,6 +337,7 @@ if [ "$debug_mode" = true ] || [ "$parallel_debug_mode" = true ]; then
     # Check if the "text" option is enabled and append the content of the generated "in" text file to enc_debug.txt
     if [ "$create_text_file" = true ]; then
         append_to_file "enc_debug.txt" "in" "\n\nContent of generated 'in' text file:"
+        #sort_blocks "enc_debug.txt"
     fi
 
     # Execute the program in decryption
@@ -287,6 +346,7 @@ if [ "$debug_mode" = true ] || [ "$parallel_debug_mode" = true ]; then
     # Check if the "text" option is enabled and append the content of the decrypted "in" text file to dec_debug.txt
     if [ "$create_text_file" = true ]; then
         append_to_file "dec_debug.txt" "in" "\n\nContent of decrypted 'in' file:"
+        #sort_blocks "dec_debug.txt"
     fi
 else
     # Recompile and execute the program in encryption and decryption with default flags

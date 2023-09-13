@@ -66,97 +66,90 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 //Executes the cipher in CTR mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	omp_set_num_threads(1);
 	unsigned char * ciphertext;
 	struct timeval current_time;
-	static block counter_block;
-	static block iv;
-	static unsigned long counter;
+	block counter_block;
+	block iv;
+	unsigned long initial_counter = 0;
+	long unsigned counter = 0;
+	//This static variable will contain the last counter value for the previous processed chunk
+	static unsigned long next_initial_counter;
 
 	if (first_chunk) //Initializing the counter and the IV when it's the first processed chunk
 	{
 		//first chunk of data, IV has to be created and prepended to the ciphertext in this execution
 		ciphertext = malloc(BLOCKSIZE * (bnum+1) * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * (bnum+1) * sizeof(unsigned char);
-		counter = create_nonce((unsigned char *) &iv);
+		initial_counter = create_nonce((unsigned char *) &iv);
 		prepend_block((block*)&iv, ciphertext);
 	}
 	else //not the first chunk of data, IV has already been prepended in a previous execution
 	{
 		ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
+		initial_counter = next_initial_counter;
 	}
 
-	long unsigned cur = 0;
-
-	#pragma omp parallel private (counter_block)
+	#pragma omp parallel private (counter, counter_block)
 	{
-		//Copying the IV in the first counter block for every thread
-		// if (first_chunk) memcpy(&counter_block, &iv, BLOCKSIZE);
-		
+		counter = initial_counter;		
 		//launching the feistel algorithm on every block
-		//I use the initial counter as a starting point for the index, because openMP parallelizing for cycles
-		//apparently works better if you rely on the index to distribute the iterations
-		#pragma omp for private (cur)
-		for (unsigned long i=counter; i<bnum+counter; ++i)
+		#pragma omp for schedule(static, 1)
+		for (unsigned long i=0; i<bnum; i++)
 		{
-			// #pragma omp critical
-			// printf("\nCounter: %lu\n", i);
-
-			//This variable will hold the current block number
-			//Yes, I already literally have a current_block variable, but it's an extern one that's defined in the main file
-			//and keeps track of the current block in the whole input file, not just in the currently processing chunk
-			#pragma omp critical
-			cur = i-counter;
+			counter=initial_counter + i;
 
 			//initializing the counter block for this iteration by xoring it with the new value of the counter, stringified
-			derive_block_from_number(i, &counter_block);
+			derive_block_from_number(counter, &counter_block);
 
 			#pragma omp critical
-			block_logging(counter_block, "\n----------CTR(ENC)-------COUNTER BLOCK-----------", cur);
+			block_logging(counter_block, "\n----------CTR(ENC)-------COUNTER BLOCK-----------", i);
 
 			//logging (pre-processing)
 			current_block++;
-			if (cur % 100000 == 0)
+			if (i % 100000 == 0)
 			{
 				gettimeofday(&current_time, NULL);
 				show_progress_data(current_time);
 			}
 
 			#pragma omp critical
-			block_logging(b[cur], "\n----------CTR-------BEFORE-----------", cur);
+			block_logging(b[i], "\n----------CTR-------BEFORE-----------", i);
 			
 			//applying the cipher on the counter block and incrementing the counter
 			process_block(counter_block.left, counter_block.right, round_keys);
 
 			//xor between the ciphered counter block and the current block of plaintext/ciphertext
-			block_xor(&b[cur], &b[cur], &counter_block);
+			block_xor(&b[i], &b[i], &counter_block);
 			
 			//logging (post-processing)
 			#pragma omp critical
-			block_logging(b[cur], "\n----------CTR-------AFTER-----------", cur);
+			block_logging(b[i], "\n----------CTR-------AFTER-----------", i);
 
 			//storing the ciphered block in the ciphertext variable
 			for (int j=0; j<BLOCKSIZE; j++)	
 			{
 				if (!first_chunk) //not the first chunk of data, IV has already been prepended in a previous execution
 				{
-					ciphertext[(cur*BLOCKSIZE)+j] = b[cur].left[j];	
+					ciphertext[(i*BLOCKSIZE)+j] = b[i].left[j];	
 				}
 				else //it's the first chunk of data, IV has been prepended in THIS execution, so the actual ciphertext slides by a block
 				{
-					ciphertext[((cur+1)*BLOCKSIZE)+j] = b[cur].left[j];
+					ciphertext[((i+1)*BLOCKSIZE)+j] = b[i].left[j];
 				}
 			}
 
 			//It's the last iteration, setting the starting counter for the next chunk
-			if (i == (bnum + counter) - 1 ) counter = i + 1;
+			if (i == bnum - 1 ) next_initial_counter = counter + 1;
 		}	
 	}
 
-	//printf("\n\n\n\nEND ENCRYPTION\n\n\n\n");
-	//block_logging(counter_block, "\n----------CTR(ENC)-------ENDING COUNTER BLOCK-----------", cur);
-
+	//I'm using a second static variable to save the initial counter for the next chunk
+	//Because if I used the one that I access during the parallel for, I would have interleaving issues:
+	//the value would be set by the thread handling the last iteration numerically, not chronologically
+	//and that means some threads might occasionally still be "left behind" processing earlier iterations
+	//with an incorrect value of initial_counter
+	initial_counter = next_initial_counter;
 	first_chunk = false;
 	return ciphertext;
 }
@@ -164,17 +157,20 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 //Executes the cipher in CTR mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	omp_set_num_threads(1);
 	unsigned char * plaintext;
 	block * ciphertext;
 	struct timeval current_time;
-	static block counter_block;
-	static unsigned long counter;
+	block counter_block;
 	block iv;
+	unsigned long initial_counter = 0;
+	long unsigned counter = 0;
+	//This static variable will contain the last counter value for the previous processed chunk
+	static unsigned long next_initial_counter;
 
 	if (!first_chunk) //not the first chunk of data, IV has already been taken from a previous execution
 	{
 		ciphertext = b;
+		initial_counter = next_initial_counter;
 	}
 	else //first chunk of data, IV (content of counter_block) has to be taken away from the ciphertext in this execution
 	{
@@ -187,69 +183,64 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 
 		//Copying the first block of data into the iv variable and using it to initialize the counter
 		memcpy(&iv, &b[0], BLOCKSIZE * sizeof(unsigned char));
-		counter = derive_number_from_block(&iv);
+		initial_counter = derive_number_from_block(&iv);
 	}
 
 	plaintext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 	chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
-
-	long unsigned cur = 0;
-
-	#pragma omp parallel private (counter_block)
+	
+	#pragma omp parallel private (counter, counter_block)
 	{	
-		//copying the IV in counter_block for every thread
-		// if (first_chunk) memcpy(&counter_block, &iv, sizeof(block));
-		
+		counter = initial_counter;
 		//launching the feistel algorithm on every block
-		//I use the initial counter as a starting point for the index, because openMP parallelizing for cycles
-		//apparently works better if you rely on the index to distribute the iterations
-		#pragma omp for private (cur)
-		for (unsigned long i=counter; i<bnum+counter; i++)
+		#pragma omp for schedule(static, 1)
+		for (unsigned long i=0; i<bnum; i++)
 		{
-			//This variable will hold the current block
-			//Yes, I already literally have a current_block variable, but it's an extern one that's defined in the main file
-			//and keeps track of the current block in the whole input file, not just in the currently processing chunk
-			cur = i-counter;
+			counter = initial_counter + i;
 
-			derive_block_from_number(i, &counter_block);
+			derive_block_from_number(counter, &counter_block);
 
 			#pragma omp critical
-			block_logging(counter_block, "\n----------CTR(DEC)-------COUNTER BLOCK-----------", cur);
+			block_logging(counter_block, "\n----------CTR(DEC)-------COUNTER BLOCK-----------", i);
 
 			//logging (pre-processing)
 			current_block++;
-			if (cur % 100000 == 0)
+			if (i % 100000 == 0)
 			{
 				gettimeofday(&current_time, NULL);
 				show_progress_data(current_time);
 			}
 
 			#pragma omp critical
-			block_logging(ciphertext[cur], "\n----------CTR-------BEFORE-----------", cur);
+			block_logging(ciphertext[i], "\n----------CTR-------BEFORE-----------", i);
 			
 			//applying the cipher on the counter block and incrementing the counter
 			process_block(counter_block.left, counter_block.right, round_keys);
 
 			//xor between the ciphered counter block and the current block of plaintext/ciphertext
-			block_xor(&ciphertext[cur], &ciphertext[cur], &counter_block);
+			block_xor(&ciphertext[i], &ciphertext[i], &counter_block);
 			
 			//logging (post-processing)
 			#pragma omp critical
-			block_logging(ciphertext[cur], "\n----------CTR-------AFTER-----------", cur);
+			block_logging(ciphertext[i], "\n----------CTR-------AFTER-----------", i);
 			
 			//storing the result of the xor in the output variable
 			for (unsigned long j=0; j<BLOCKSIZE; j++)	
 			{
-				plaintext[((cur)*BLOCKSIZE)+j] = ciphertext[cur].left[j];
+				plaintext[((i)*BLOCKSIZE)+j] = ciphertext[i].left[j];
 			}
 
 			//It's the last iteration, setting the starting counter for the next chunk
-			if (i == (bnum + counter) - 1 ) counter = i + 1;
+			if (i == bnum - 1 ) next_initial_counter = counter + 1;
 		}	
 	}
 
-	//printf("\n\n\n\nEND DECRYPTION");
-
+	//I'm using a second static variable to save the initial counter for the next chunk
+	//Because if I used the one that I access during the parallel for, I would have interleaving issues:
+	//the value would be set by the thread handling the last iteration numerically, not chronologically
+	//and that means some threads might occasionally still be "left behind" processing earlier iterations
+	//with an incorrect value of initial_counter
+	initial_counter = next_initial_counter;
 	first_chunk = false;
 	return plaintext;
 }

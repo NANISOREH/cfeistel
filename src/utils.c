@@ -262,12 +262,14 @@ void block_logging(block b, const char* message, unsigned long bcount)
 	}
 
 	//prints everything out
-	printf("\n\n\nblock %lu processed by the thread %d", bcount, omp_get_thread_num());
+	printf("\n\n\n====================================================================\n");
+	printf("block %lu processed by the thread %d", bcount, omp_get_thread_num());
 	printf("%s", message);
 	block_data[BLOCKSIZE] = '\0';
 	printf("\nblock text:");
 	str_safe_print(block_data, BLOCKSIZE);
 	printf("\nblock sum: \n%llu\n", checksum);
+	printf("====================================================================\n");
 	checksum = 0;
 }
 
