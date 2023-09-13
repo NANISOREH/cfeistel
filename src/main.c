@@ -120,7 +120,7 @@ int main(int argc, char * argv[])
 		if (to_do == dec && final_chunk_flag == 1) 
 		{ 
 			//Removing padding from this chunk
-			chunk_size = remove_padding(result, num_blocks);
+			chunk_size = remove_padding(result, num_blocks, chosen, total_file_size);
 
 			//if the last chunk only contains an accounting block saying the chunk has 0 bytes, it means that the last chunk was
 			//completely full and feistel_decrypt didn't detect it as "last chunk". In this case we can just use BUFSIZE as size.
