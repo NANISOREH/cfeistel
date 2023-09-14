@@ -4,13 +4,13 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdlib.h"
+#include "stdbool.h"
 #include "common.h"
 #include "utils.h"
 #include "feistel.h"
 #include "opmodes.h"
 #include "sys/time.h"
 #include "omp.h"
-#include "stdbool.h"
 #include "stdint.h"
 
 
@@ -18,11 +18,7 @@
 extern long unsigned total_file_size;
 extern long unsigned current_block;
 extern long unsigned chunk_size;
-
-static bool first_chunk = true;
-
-int create_prepend_iv(block * iv, unsigned char * ciphertext);
-int prepend_block(block * b, unsigned char * ciphertext);
+extern bool first_chunk;
 
 //Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
@@ -39,7 +35,7 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 	{
 		//logging (pre-processing)
 		current_block++;
-		if (i % 100000 == 0)
+		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time);
@@ -80,7 +76,7 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 		//first chunk of data, IV has to be created and prepended to the ciphertext in this execution
 		ciphertext = malloc(BLOCKSIZE * (bnum+1) * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * (bnum+1) * sizeof(unsigned char);
-		initial_counter = create_nonce((unsigned char *) &iv);
+		initial_counter = create_nonce(&iv);
 		prepend_block((block*)&iv, ciphertext);
 	}
 	else //not the first chunk of data, IV has already been prepended in a previous execution
@@ -99,15 +95,15 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 		{
 			counter=initial_counter + i;
 
-			//initializing the counter block for this iteration by xoring it with the new value of the counter, stringified
+			//initializing the counter block for this iteration 
 			derive_block_from_number(counter, &counter_block);
 
-			#pragma omp critical
-			block_logging(counter_block, "\n----------CTR(ENC)-------COUNTER BLOCK-----------", i);
+			// #pragma omp critical
+			// block_logging(counter_block, "\n----------CTR(ENC)-------COUNTER BLOCK-----------", i);
 
 			//logging (pre-processing)
 			current_block++;
-			if (i % 100000 == 0)
+			if (i % 10000 == 0)
 			{
 				gettimeofday(&current_time, NULL);
 				show_progress_data(current_time);
@@ -150,7 +146,6 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	//and that means some threads might occasionally still be "left behind" processing earlier iterations
 	//with an incorrect value of initial_counter
 	initial_counter = next_initial_counter;
-	first_chunk = false;
 	return ciphertext;
 }
 
@@ -167,27 +162,24 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	//This static variable will contain the last counter value for the previous processed chunk
 	static unsigned long next_initial_counter;
 
+	ciphertext = b;
+	plaintext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+
 	if (!first_chunk) //not the first chunk of data, IV has already been taken from a previous execution
 	{
-		ciphertext = b;
 		initial_counter = next_initial_counter;
+		chunk_size = BLOCKSIZE * (bnum) * sizeof(unsigned char);
 	}
-	else //first chunk of data, IV (content of counter_block) has to be taken away from the ciphertext in this execution
+	else //first chunk of data, IV (content of counter_block) has to be taken from the ciphertext in this execution
 	{
-		bnum--;		
-		//Instead of just using the pointer to block passed in input, we allocate new space with one less block worth of space
-		//because we're going to keep out the prepended IV, and copy everything from b starting from the second block 
-		ciphertext = malloc((bnum) * sizeof(block));
-		for (int i=0; i<bnum; i++) 
-			memcpy(&ciphertext[i], &b[i+1], sizeof(block));
-
 		//Copying the first block of data into the iv variable and using it to initialize the counter
 		memcpy(&iv, &b[0], BLOCKSIZE * sizeof(unsigned char));
 		initial_counter = derive_number_from_block(&iv);
-	}
 
-	plaintext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
-	chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
+		//We set the chunksize to BLOCKSIZE less than the data we received in input
+		//to account for the first block not containing actual data 
+		chunk_size = BLOCKSIZE * (bnum-1) * sizeof(unsigned char);
+	}
 	
 	#pragma omp parallel private (counter, counter_block)
 	{	
@@ -196,16 +188,23 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 		#pragma omp for schedule(static, 1)
 		for (unsigned long i=0; i<bnum; i++)
 		{
-			counter = initial_counter + i;
+			if (first_chunk) 
+			{
+				counter = initial_counter + i - 1;
+				//It's the IV, we don't process it
+				if (i == 0) continue;
+			}
+			else counter = initial_counter + i;
 
+			//initializing the counter block for this iteration 
 			derive_block_from_number(counter, &counter_block);
 
-			#pragma omp critical
-			block_logging(counter_block, "\n----------CTR(DEC)-------COUNTER BLOCK-----------", i);
+			// #pragma omp critical
+			// block_logging(counter_block, "\n----------CTR(DEC)-------COUNTER BLOCK-----------", i);
 
 			//logging (pre-processing)
 			current_block++;
-			if (i % 100000 == 0)
+			if (i % 10000 == 0)
 			{
 				gettimeofday(&current_time, NULL);
 				show_progress_data(current_time);
@@ -241,7 +240,13 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	//and that means some threads might occasionally still be "left behind" processing earlier iterations
 	//with an incorrect value of initial_counter
 	initial_counter = next_initial_counter;
-	first_chunk = false;
+
+	//If it's the first chunk, the first block was the IV, so we skip it
+	if (first_chunk) 
+	{
+		plaintext = plaintext + 16;
+	}
+
 	return plaintext;
 }
 
@@ -261,7 +266,8 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	{
 	 	ciphertext = malloc(BLOCKSIZE * (bnum+1) * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * (bnum+1) * sizeof(unsigned char);
-		create_prepend_iv(&iv, ciphertext);
+		create_nonce(&iv);
+		prepend_block(&iv, ciphertext);
 	}
 	
 	//prev_ciphertext will start off with the initialization vector, later it will be used in every iteration x 
@@ -273,7 +279,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	{
 		//logging (pre-encryption)
 		current_block++;
-		if (i % 100000 == 0)
+		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time);
@@ -306,10 +312,6 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 
 	//The iv block for the next chunk will be the last value of prev_ciphertext
 	memcpy(&iv, &prev_ciphertext, sizeof(block));
-	//setting the flag here because, if I set it in the IV generation function, the for cycle that stores the ciphertext
-	//would already see first_chunk=true and overwrite the IV
-	//if I set it in the cycle instead, I would only correctly slide the ciphertext forward in the first iteration
-	first_chunk = false;
 
 	return ciphertext;
 }
@@ -363,7 +365,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		#pragma omp critical
 		block_logging(ciphertext[i], "\n----------CBC(DEC)------BEFORE-----------", i);
 		current_block++;
-		if (i % 100000 == 0)
+		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time);
@@ -399,39 +401,91 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	return plaintext;
 }
 
-//Creates an IV block of data out of a random nonce and prepends it to the ciphertext, returns the numeric nonce
-int create_prepend_iv(block * iv, unsigned char * ciphertext)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void operate_ctr_mode(unsigned char * processed, block * to_process, unsigned long initial_counter, unsigned long * next_initial_counter, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	if (!first_chunk) //not the first chunk of data, IV has already been prepended in a previous execution
-		return -1;
+	unsigned int counter = 0;
+	block counter_block;
+	struct timeval current_time;
 
-	unsigned char nonce[BLOCKSIZE];
-	unsigned long num_nonce = create_nonce(nonce);
+	#pragma omp parallel private (counter, counter_block)
+	{	
+		counter = initial_counter;
+		//launching the feistel algorithm on every block
+		#pragma omp for schedule(static, 1)
+		for (unsigned long i=0; i<bnum; i++)
+		{
+			counter = initial_counter + i;
 
-	//populating the IV block with the nonce and prepend the IV block to the ciphertext
-	for (int i=0; i<BLOCKSIZE/2; i++)
-	{
-		iv->left[i] = nonce[i];
-		iv->right[i] = nonce[i + BLOCKSIZE/2];
-		ciphertext[i] = nonce[i];
-		ciphertext[i + BLOCKSIZE/2] = nonce[i + BLOCKSIZE/2];
+			//initializing the counter block for this iteration 
+			derive_block_from_number(counter, &counter_block);
+
+			#pragma omp critical
+			block_logging(counter_block, "\n----------CTR(DEC)-------COUNTER BLOCK-----------", i);
+
+			//logging (pre-processing)
+			current_block++;
+			if (i % 100000 == 0)
+			{
+				gettimeofday(&current_time, NULL);
+				show_progress_data(current_time);
+			}
+
+			#pragma omp critical
+			block_logging(to_process[i], "\n----------CTR-------BEFORE-----------", i);
+			
+			//applying the cipher on the counter block and incrementing the counter
+			process_block(counter_block.left, counter_block.right, round_keys);
+
+			//xor between the ciphered counter block and the current block of plaintext/ciphertext
+			block_xor(&to_process[i], &to_process[i], &counter_block);
+			
+			//logging (post-processing)
+			#pragma omp critical
+			block_logging(to_process[i], "\n----------CTR-------AFTER-----------", i);
+			
+			//storing the result of the xor in the output variable
+			for (unsigned long j=0; j<BLOCKSIZE; j++)	
+			{
+				processed[((i)*BLOCKSIZE)+j] = to_process[i].left[j];
+			}
+
+			//It's the last iteration, setting the starting counter for the next chunk
+			if (i == bnum - 1 ) *next_initial_counter = counter + 1;
+		}	
 	}
-
-	return num_nonce;
-}
-
-//Prepends a block to the ciphertext
-int prepend_block(block * b, unsigned char * ciphertext)
-{
-	if (!first_chunk) //not the first chunk of data, IV has already been prepended in a previous execution
-		return -1;
-
-	//populating the IV block with the nonce and prepend the IV block to the ciphertext
-	for (int i=0; i<BLOCKSIZE/2; i++)
-	{
-		ciphertext[i] = b->left[i];
-		ciphertext[i + BLOCKSIZE/2] = b->right[i];
-	}
-
-	return 0;
 }

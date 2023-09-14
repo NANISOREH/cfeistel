@@ -2,6 +2,7 @@
 #include "string.h"
 #include "stdlib.h"
 #include "ctype.h"
+#include "stdbool.h"
 #include "common.h"
 #include "feistel.h"
 #include "utils.h"
@@ -67,7 +68,7 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, e
 	//the last chunk will be larger by one block.
 	//I should solve this by refactoring the accounting block management and make it report the size of the last block, not the last chunk.
 	//This way I could always correctly derive the size of last chunk in any case
-	if (chosen == ctr && total_file_size > BUFSIZE) size += BLOCKSIZE;
+	//if (chosen == ctr) size += BLOCKSIZE;
 
 	for (unsigned long i = size; i<num_blocks * BLOCKSIZE; i++) 
 		result[i] = '\0';
@@ -252,11 +253,10 @@ void block_logging(block b, const char* message, unsigned long bcount)
 	#endif
 
 	//computes the checksum and populates the block_data string
-	long long unsigned checksum = 0;
+	long unsigned checksum = compute_checksum((unsigned char *)&b, BLOCKSIZE);
 	char block_data[BLOCKSIZE+1];
 	for (int j=0; j<BLOCKSIZE/2; j++)
 	{
-		checksum = checksum + b.left[j] + b.right[j];
 		block_data[j] = b.left[j];
 		block_data[j + BLOCKSIZE/2] = b.right[j];
 	}
@@ -268,9 +268,21 @@ void block_logging(block b, const char* message, unsigned long bcount)
 	block_data[BLOCKSIZE] = '\0';
 	printf("\nblock text:");
 	str_safe_print(block_data, BLOCKSIZE);
-	printf("\nblock sum: \n%llu\n", checksum);
+	printf("\nblock sum: \n%lu\n", checksum);
 	printf("====================================================================\n");
 	checksum = 0;
+}
+
+//Computes a very naive checksum of a given chunk of data
+long unsigned compute_checksum (unsigned char * data, long unsigned length)
+{
+	long long unsigned checksum = 0;
+	for (int j=0; j<length; j++)
+	{
+		checksum = checksum + data[j];
+	}
+
+	return checksum;
 }
 
 double timeval_diff_seconds(struct timeval start, struct timeval end) 
@@ -281,8 +293,8 @@ double timeval_diff_seconds(struct timeval start, struct timeval end)
     return (double)(end_micros - start_micros) / 1000000.0;
 }
 
-//Creates BLOCKSIZE random bytes and uses them to populate the nonce array, returns a numeric representation of the nonce
-long unsigned create_nonce(unsigned char nonce[BLOCKSIZE])
+//Creates BLOCKSIZE random bytes and uses them to populate a block, returns a numeric representation of the nonce
+long unsigned create_nonce(block * nonce)
 {
 	long unsigned num_nonce = 0;
 	int urandom_fd = open("/dev/urandom", O_RDONLY);
@@ -308,21 +320,10 @@ long unsigned create_nonce(unsigned char nonce[BLOCKSIZE])
         return 1;
     }
 
-    return derive_number_from_block((block *)nonce);
+    return derive_number_from_block(nonce);
 }
 
-//Populates the b block with the content of the data array
-void block_from_byte_array(block * b, unsigned char data[BLOCKSIZE])
-{
-	for (int i=0; i<BLOCKSIZE/2; i++)
-	{
-		b->left[i] = data[i];
-		b->right[i] = data[i + BLOCKSIZE/2];
-	}
-}
-
-//Derives an unsigned long from the content of a block in such a way that we'll always get the same number
-//from the same block content
+//Derives an unsigned long from the content of a block 
 long unsigned derive_number_from_block(block * b)
 {
 	long unsigned num = 0;
@@ -336,6 +337,8 @@ long unsigned derive_number_from_block(block * b)
 	return num;
 }
 
+//Derives a block from an unsigned long
+//It's the inverse function of derive_number_from_block
 void derive_block_from_number(long unsigned num, block *b)
 {
     unsigned char data[BLOCKSIZE];
@@ -346,4 +349,16 @@ void derive_block_from_number(long unsigned num, block *b)
     }
 
     memcpy(b, data, BLOCKSIZE);
+}
+
+//Prepends a block to the plaintext/ciphertext
+int prepend_block(block * b, unsigned char * data)
+{
+	for (int i=0; i<BLOCKSIZE/2; i++)
+	{
+		data[i] = b->left[i];
+		data[i + BLOCKSIZE/2] = b->right[i];
+	}
+
+	return 0;
 }

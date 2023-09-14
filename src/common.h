@@ -1,5 +1,4 @@
 #define BUFSIZE 104857600
-//#define BUFSIZE 32
 #define DEFAULT_MODE ctr
 #define DEFAULT_OP enc
 #define DEFAULT_OUT specified
@@ -21,3 +20,4 @@ extern long unsigned total_file_size;
 extern long unsigned current_block;
 extern long unsigned chunk_size;
 extern struct timeval start_time;
+extern bool first_chunk;

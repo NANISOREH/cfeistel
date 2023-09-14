@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "stdlib.h"
+#include "stdbool.h"
 #include "common.h"
 #include "utils.h"
 #include "feistel.h"
@@ -10,6 +11,8 @@
 #include "sys/time.h"
 #include "omp.h"
 #include "getopt.h"
+
+#include <bits/getopt_core.h>
 
 enum mode chosen = DEFAULT_MODE;
 enum operation to_do = DEFAULT_OP;
@@ -27,6 +30,7 @@ unsigned long total_file_size=0;
 //prepended IV or anything else that might slightly alter the block count
 unsigned long chunk_size=0;
 unsigned long current_block=0; 
+bool first_chunk=true;
 struct timeval start_time;
 
 int command_selection(int argc, char * argv[]);
@@ -39,7 +43,6 @@ int main(int argc, char * argv[])
 	memcpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
-	unsigned int chunk_num = 0;
 
 	if (command_selection(argc, argv) == -1) return -1;
 
@@ -81,7 +84,6 @@ int main(int argc, char * argv[])
 	//fread read less than BUFSIZE bytes, but there are borderline cases that are checked in other ways.
 	while (1)
 	{	
-		chunk_num++;
 		//borderline case: if there's only an accounting block going over the BUFSIZE bounds, it's the last chunk.
 		//We'll read an extra block in this iteration to make space for the accounting block in the current chunk.
 		if (to_do == dec && check_last_block(read_file))
@@ -89,7 +91,7 @@ int main(int argc, char * argv[])
 			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
 			final_chunk_flag = 1;
 		}
-		else if (to_do == dec && chunk_num == 1 && chosen == cbc) //first chunk, we need to read one extra block (header)
+		else if (to_do == dec && first_chunk && chosen != ecb) //first chunk, we need to read one extra block (header)
 		//only needed in decryption, for modes that require an IV/nonce
 		{
 			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
@@ -113,6 +115,9 @@ int main(int argc, char * argv[])
 		else if (to_do == dec) result = decrypt_blocks(data, chunk_size, key, chosen);
 		if (result == NULL) return -1;
 
+		first_chunk = false;
+		//padding has not been applied yet in encryption or removed in decryption
+		//so BLOCKSIZE should be a perfect divisor of chunk_size
 		num_blocks = chunk_size/BLOCKSIZE;
 
 		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
@@ -132,6 +137,8 @@ int main(int argc, char * argv[])
 		}
 		else //in any other case we're using the number of blocks calculated before to determine how much text to write
 		{
+			if (chosen == ctr && first_chunk) num_blocks++;
+
 			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file);
 		}
 
@@ -153,18 +160,18 @@ int main(int argc, char * argv[])
 			snprintf(speed, sizeof(speed), "Avg processing speed: %.2f MB/s", estimate_speed(current_time));
 			snprintf(time, sizeof(time), "Time elapsed: %.2f s", time_diff);
 			snprintf(filesize, sizeof(filesize), "\nTotal file size: %.2f MB", (float)total_file_size / (1024.0 * 1024.0));
-			exit_message(4, "Operation complete!\n", filesize, speed, time);
+			if (to_do == enc) exit_message(4, "Encryption complete!\n", filesize, speed, time);
+			else exit_message(4, "Decryption complete!\n", filesize, speed, time);
 
 			break;
 		}
 
 		//zeroing data for the processed chunk from memory after writing it to file so that it cannot be dumped from memory
 		memset(data, 0, chunk_size);
-		memset(result, 0, num_blocks * BLOCKSIZE);
-		
-		free(result);
+		memset(result, 0, num_blocks * BLOCKSIZE);		
 	}
 
+	free(data);
 	return 0;
 }
 
@@ -187,7 +194,7 @@ int command_selection(int argc, char *argv[])
         switch (opt) 
 		{
             case 'k':
-                memcpy(key, "secretkey", KEYSIZE);
+                memcpy(key, optarg, KEYSIZE);
                 break;
             case 'i':
                 infile = optarg;
