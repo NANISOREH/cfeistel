@@ -9,7 +9,9 @@ parallel_debug_mode=false
 enc_key="secretkey"
 dec_key="secretkey"
 cflags=""
-create_text_file=false  
+create_text_file=false
+test_suite=false
+suite_sizes=(16 1024 1234 52341 954321 8463014 104857592 104857600 104857608 154857600 209715196 209715200 209715205 259715200)
 
 # Converts megabytes to bytes
 convert_to_bytes() {
@@ -21,6 +23,12 @@ convert_to_bytes() {
 convert_to_mb() {
     local bytes="$1"
     echo "$((bytes / 1024 / 1024)) MB"
+}
+
+launch_test_suite() {
+    for size in "${suite_sizes[@]}"; do
+        bash "$0" "$size" -m "$encryption_mode" -ek "$enc_key" -dk "$dec_key" -c "-DQUIET"
+    done
 }
 
 # Generates a file containing random text of a specified length
@@ -89,16 +97,17 @@ generate_repeated_data() {
 function display_usage() {
     echo "Usage: test.sh [options]"
     echo "Options:"
-    echo "  -mb                  Use megabytes as unit for file size (default is bytes)"
-    echo "  -m, --mode <mode>    Operation mode (e.g., -m cbc)"
-    echo "  -k, --key <key>      Encryption and decryption key"
-    echo "  -ek, --enckey <key>  Encryption key"
-    echo "  -dk, --deckey <key>  Decryption key"
-    echo "  -t, --text           Create a text file (size limit: 1MB)"
-    echo "  -d, --debug          Enable debug mode (size limit: 1MB)"
-    echo "  -dp, --debug-parallel Enable parallel debug mode (size limit: 1MB)"
-    echo "  -r, --repeat         Enable repeated block mode"
-    echo "  <file_size>          File size in bytes (numeric argument)"
+    echo "  -mb                     Use megabytes as unit for file size (default is bytes)"
+    echo "  -m, --mode <mode>       Operation mode (e.g., -m cbc)"
+    echo "  -k, --key <key>         Encryption and decryption key"
+    echo "  -ek, --enckey <key>     Encryption key"
+    echo "  -dk, --deckey <key>     Decryption key"
+    echo "  -t, --text              Create a text file (size limit: 1MB)"
+    echo "  -d, --debug             Enable debug mode (size limit: 1MB)"
+    echo "  -dp, --debug-parallel   Enable parallel debug mode (size limit: 1MB)"
+    echo "  -r, --repeat            Enable repeated block mode"
+    echo "  -s, --suite             Enable test suite mode"
+    echo "  <file_size>             File size in bytes (numeric argument)"
 }
 
 # Appends the content of one file to another
@@ -144,9 +153,20 @@ while [ "$#" -gt 0 ]; do
             unit_flag="MB"
             shift
             ;;
+        -s|--suite)
+            test_suite=true
+            shift
+            ;;
         -m|--mode)
             shift
             encryption_mode="$1"
+            shift
+            ;;
+        # -c is not "advertised" to the user because, while it must be used for test suite launch,
+        # it should never be used outside of that use case
+        -c|--compiler)
+            shift
+            cflags="$1"
             shift
             ;;
         -k|--key)
@@ -228,6 +248,13 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+# Launches a series of tests for a set number of sizes, using the desired values of operation mode and key
+# Every other parameter will be ignored in test suite mode
+if [ "$test_suite" = true ]; then
+    launch_test_suite
+    exit 0
+fi
+
 # Check if the unit is MB and convert to bytes if necessary
 if [ "$unit_flag" == "MB" ]; then
     file_size=$(convert_to_bytes "$file_size")
@@ -303,13 +330,11 @@ decrypted_md5sum=$(md5sum "in" | awk '{print $1}')
 
 # Check if the MD5 checksums match
 if [ "$original_md5sum" == "$decrypted_md5sum" ]; then
-    echo -e "\e[32m\nEncryption and decryption successful. MD5 checksums match.\n\e[0m" 
+    echo -e "\e[32m\nEncryption and decryption successful. MD5 checksums match.\n\e[0m"
+    rm "in" "out" "cfeistel"
+    exit 0
 else
-    echo -e "\e[31m\nError: MD5 checksums do not match. Encryption or decryption failed.\n\e[0m"  
+    echo -e "\e[31m\nError: MD5 checksums do not match. Encryption or decryption failed.\n\e[0m"
+    rm "in" "out" "cfeistel"
+    exit -1
 fi
-
-
-# Clean up temporary files
-rm "in" "out" "cfeistel"
-
-exit 0

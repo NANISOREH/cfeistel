@@ -107,7 +107,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
 
 		for (int i=0; i<NROUND; i++)
 		{
-			str_safe_copy(round_keys[i], temp[j], NROUND);
+			memcpy(round_keys[i], temp[j], NROUND);
 			j--;
 		}
 	}
@@ -134,7 +134,7 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 	unsigned char right_part;
 	unsigned char master_key[KEYSIZE];
 	memcpy(master_key, key, KEYSIZE);
-	str_safe_copy(round_keys[0], master_key, KEYSIZE);
+	memcpy(round_keys[0], master_key, KEYSIZE);
 
 	for (int j = 0; j<NROUND; j++)
 	{
@@ -148,6 +148,6 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key
 		
 		//the altered key generated in the iteration j is saved as round key number j,
 		//the final result is an extended key stored in the round_keys matrix
-		str_safe_copy(round_keys[j], master_key, KEYSIZE);
+		memcpy(round_keys[j], master_key, KEYSIZE);
 	} 
 }

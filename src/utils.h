@@ -6,6 +6,7 @@ long unsigned compute_checksum (unsigned char * data, long unsigned length);
 void exit_message(int num_strings, ...);
 void show_progress_data(struct timeval current_time);
 double estimate_speed (struct timeval current_time);
+void str_safe_print(unsigned char * to_print, unsigned long size);
 //Maths utils
 long unsigned derive_number_from_block(block * b);
 void derive_block_from_number(long unsigned num, block *b);
@@ -17,8 +18,6 @@ long unsigned create_nonce(block * nonce);
 void block_xor(block *result, const block *first, const block *second);
 //Data flow utils
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, enum mode chosen, unsigned long total_file_size);
-void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size);
-void str_safe_print(unsigned char * to_print, unsigned long size);
 int check_end_file(FILE *stream);
 int check_last_block(FILE *stream);
 int prepend_block(block * b, unsigned char * data);

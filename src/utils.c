@@ -130,14 +130,7 @@ void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_fi
 	*first = (*first & ~(1UL << pos_first)) | (second_bit << pos_first);
 }
 
-//Basicly strncpy but it ignores '\0' null characters, copying exactly size characters.
-void str_safe_copy(unsigned char * dest, unsigned char * src, unsigned long size)
-{
-	for (long unsigned i=0; i<size; i++)
-		dest[i] = src[i];
-}
-
-//Printf wrapper that ignores '\0' null characters, printing exactly size characters.
+//Printf wrapper that ignores '\0' null characters, printing exactly size characters (even if some are not characters).
 void str_safe_print(unsigned char * to_print, unsigned long size)
 {
 	printf("\n");

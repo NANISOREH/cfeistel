@@ -17,17 +17,17 @@ void process_block(unsigned char * left, unsigned char * right, unsigned char ro
 
 	for (int i=0; i<NROUND; i++)	//execution of NROUND cipher rounds on the block
 	{
-		str_safe_copy(templeft, left, BLOCKSIZE/2);
+		memcpy(templeft, left, BLOCKSIZE/2);
 
-		str_safe_copy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round
+		memcpy(left, right, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round
 		sp_network(right, round_keys[i]);	//f(right)
 		half_block_xor(right, templeft, right);	  //f(right) XOR left 
 	}
 
 	//final inversion of left and right parts of the block after the last round
-	str_safe_copy(templeft, left, BLOCKSIZE/2);
-	str_safe_copy(left, right, BLOCKSIZE/2);
-	str_safe_copy(right, templeft, BLOCKSIZE/2);
+	memcpy(templeft, left, BLOCKSIZE/2);
+	memcpy(left, right, BLOCKSIZE/2);
+	memcpy(right, templeft, BLOCKSIZE/2);
 }
 
 //"f" function of the feistel cipher. Contains a VERY basic SP network. 
