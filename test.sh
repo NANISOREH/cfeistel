@@ -11,7 +11,7 @@ dec_key="secretkey"
 cflags=""
 create_text_file=false
 test_suite=false
-suite_sizes=(16 1024 1234 52341 954321 8463014 104857592 104857600 104857608 154857600 209715196 209715200 209715205 259715200)
+suite_sizes=(16 1024 1234 52341 954321 8463014 104857592 104857600 104857608 154857600 209715196 209715200 209715205 259715200 314572793)
 
 # Converts megabytes to bytes
 convert_to_bytes() {
@@ -26,9 +26,40 @@ convert_to_mb() {
 }
 
 launch_test_suite() {
-    for size in "${suite_sizes[@]}"; do
-        bash "$0" "$size" -m "$encryption_mode" -ek "$enc_key" -dk "$dec_key" -c "-DQUIET"
+    total_tests="${#suite_sizes[@]}"
+    tests_succeeded=0
+    tests_failed=0
+    size_display=""
+
+    echo -e "\nMode of operation: $encryption_mode"
+    echo "Encryption Key: $enc_key" 
+    echo "Decryption Key: $dec_key"   
+
+    for ((i = 0; i < total_tests; i++)); do
+        size="${suite_sizes[i]}"
+        echo -e "\nPerforming test $((i + 1)) out of $total_tests..."
+        
+        if [ "$size" -gt 1048576 ]; then
+            size_display="$(convert_to_mb "$size") ($size bytes)"
+        else
+            size_display="${size} bytes"
+        fi
+        echo -e "Size: $size_display"
+
+        # Run the test and capture the exit code
+        bash "$0" "$size" -m "$encryption_mode" -ek "$enc_key" -dk "$dec_key" -c "-DQUIET" >/dev/null 2>&1;
+        exit_code="$?"
+
+        if [ "$exit_code" -eq 0 ]; then
+            echo -e "Test $((i + 1)) succeeded.\n"
+            ((tests_succeeded++))
+        else
+            echo -e "Test $((i + 1)) failed with exit code $exit_code.\n"
+            ((tests_failed++))
+        fi
     done
+
+    echo "Tests completed. Succeeded: $tests_succeeded, Failed: $tests_failed"
 }
 
 # Generates a file containing random text of a specified length
@@ -285,7 +316,7 @@ if [ "$unit_flag" == "MB" ]; then
 else
     echo "  File Size: $file_size bytes"
 fi
-echo "  Encryption Mode: $encryption_mode"
+echo "  Mode of operation: $encryption_mode"
 echo "  Debug Mode: $debug_mode" 
 echo "  Text Mode: $create_text_file" 
 echo "  Encryption Key: $enc_key" 

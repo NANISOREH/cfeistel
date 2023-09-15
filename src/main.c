@@ -22,15 +22,16 @@ char * outfile = "out";
 unsigned char * key;
 int saved_stdout;
 
-//This variable notes the currently processing block relative to the whole file
+//This variable stores the currently processing block relative to the whole file
 //and not just relative the chunk that's currently in the buffer 
 unsigned long total_file_size=0;
-//This one notes the size of the current chunk of data, and it's set by the function that processed it
+//This one stores the size of the current chunk of data, and it's set by the function that processed it
 //so that it's always known in the main how much data do write out to file, regardless of wheter there's accounting blocks,
 //prepended IV or anything else that might slightly alter the block count
 unsigned long chunk_size=0;
 unsigned long current_block=0; 
-bool first_chunk=true;
+//nchunk will contain the number of chunks that have been processed
+int nchunk=0;
 struct timeval start_time;
 
 int command_selection(int argc, char * argv[]);
@@ -43,6 +44,9 @@ int main(int argc, char * argv[])
 	memcpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
+	//This flag will signal the present of a final chunk that's only formed by the accounting block for the previous chunk
+	//(the last one with actual data)
+	bool acc_only_chunk = false;
 
 	if (command_selection(argc, argv) == -1) return -1;
 
@@ -77,21 +81,14 @@ int main(int argc, char * argv[])
 
 	#ifdef SEQ
     	omp_set_num_threads(1);
-	#endif	
+	#endif
 
 	//This loop will continue reading from read_file, processing data in chunks of BUFSIZE bytes and writing them to write_file,
 	//until it reaches the last chunk of readable data. The standard way to understand when it's the last one is just checking if
-	//fread read less than BUFSIZE bytes, but there are borderline cases that are checked in other ways.
+	//fread read less than BUFSIZE bytes
 	while (1)
-	{	
-		//borderline case: if there's only an accounting block going over the BUFSIZE bounds, it's the last chunk.
-		//We'll read an extra block in this iteration to make space for the accounting block in the current chunk.
-		if (to_do == dec && check_last_block(read_file))
-		{
-			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
-			final_chunk_flag = 1;
-		}
-		else if (to_do == dec && first_chunk && chosen != ecb) //first chunk, we need to read one extra block (header)
+	{			
+		if (to_do == dec && nchunk == 0 && chosen != ecb) //first chunk, we need to read one extra block (header)
 		//only needed in decryption, for modes that require an IV/nonce
 		{
 			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
@@ -101,6 +98,10 @@ int main(int argc, char * argv[])
 			data = (unsigned char *)realloc(data, BUFSIZE * sizeof(unsigned char));
 			chunk_size = fread(data, sizeof(char), BUFSIZE, read_file);
 		}
+		
+		//If we read exactly BLOCKSIZE bytes, then the current chunk only contains the accounting block for the previous one
+		//This only occurs when the actual data size falls within BLOCKSIZE bytes of a BUFSIZE multiple
+		if (nchunk > 0 && chunk_size == BLOCKSIZE) acc_only_chunk = true;
 
 		if (chunk_size < 0) //reading error
 		{
@@ -115,7 +116,8 @@ int main(int argc, char * argv[])
 		else if (to_do == dec) result = decrypt_blocks(data, chunk_size, key, chosen);
 		if (result == NULL) return -1;
 
-		first_chunk = false;
+		//incrementing the number of processed chunks
+		nchunk++;
 		//padding has not been applied yet in encryption or removed in decryption
 		//so BLOCKSIZE should be a perfect divisor of chunk_size
 		num_blocks = chunk_size/BLOCKSIZE;
@@ -137,13 +139,20 @@ int main(int argc, char * argv[])
 		}
 		else //in any other case we're using the number of blocks calculated before to determine how much text to write
 		{
-			if (chosen == ctr && first_chunk) num_blocks++;
-
 			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file);
 		}
 
 		if (final_chunk_flag == 1) //it was the last chunk of data, we're done, closing files and printing some stats
 		{
+			//This is needed when we are processing a chunk that only contains an accounting block 
+			//In this case we can't directly remove the padding using the chunk size, because the chunk size we have is 
+			//relative to the previous block, so we have to do some maths and truncate the whole file at the correct point
+			if (acc_only_chunk && to_do == dec)
+			{
+				fseek(write_file, 0, SEEK_SET);
+				ftruncate(fileno(write_file), chunk_size + ((nchunk - 2) * BUFSIZE));
+			}
+
 			fclose(read_file);
 			fclose(write_file);
 			if (output_mode == replace) 

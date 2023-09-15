@@ -174,16 +174,15 @@ int check_last_block(FILE *stream)
     	fseek(stream, BLOCKSIZE, SEEK_CUR); //we're at the first character of chunk x+1, we move a block further
 
         c = fgetc(stream);
+		ungetc(c, stream);
+		fseek(stream, 0 - (BUFSIZE + BLOCKSIZE), SEEK_CUR);
 	    if (c == EOF) //next character is EOF means the first and only block of the chunk is the accounting block, bingo!
 	    {
-	    	ungetc(c, stream);
-	    	fseek(stream, 0 - (BUFSIZE + BLOCKSIZE), SEEK_CUR);
+			printf("are you here");
 	    	return 1;
 	    }
 	    else //next character is something other than EOF means there's other data to be read, we were not at the last chunk to begin with
 	    {
-	    	ungetc(c, stream);
-	    	fseek(stream, 0 - (BUFSIZE + BLOCKSIZE), SEEK_CUR);
 	    	return 0;
 	    }
     }

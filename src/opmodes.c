@@ -18,7 +18,7 @@
 extern long unsigned total_file_size;
 extern long unsigned current_block;
 extern long unsigned chunk_size;
-extern bool first_chunk;
+extern int nchunk;
 
 //Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
@@ -71,7 +71,7 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	//This static variable will contain the last counter value for the previous processed chunk
 	static unsigned long next_initial_counter;
 
-	if (first_chunk) //Initializing the counter and the IV when it's the first processed chunk
+	if (nchunk==0) //Initializing the counter and the IV when it's the first processed chunk
 	{
 		//first chunk of data, IV has to be created and prepended to the ciphertext in this execution
 		ciphertext = malloc(BLOCKSIZE * (bnum+1) * sizeof(unsigned char));
@@ -125,7 +125,7 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 			//storing the ciphered block in the ciphertext variable
 			for (int j=0; j<BLOCKSIZE; j++)	
 			{
-				if (!first_chunk) //not the first chunk of data, IV has already been prepended in a previous execution
+				if (nchunk>0) //not the first chunk of data, IV has already been prepended in a previous execution
 				{
 					ciphertext[(i*BLOCKSIZE)+j] = b[i].left[j];	
 				}
@@ -165,7 +165,7 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	ciphertext = b;
 	plaintext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 
-	if (!first_chunk) //not the first chunk of data, IV has already been taken from a previous execution
+	if (nchunk>0) //not the first chunk of data, IV has already been taken from a previous execution
 	{
 		initial_counter = next_initial_counter;
 		chunk_size = BLOCKSIZE * (bnum) * sizeof(unsigned char);
@@ -188,7 +188,7 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 		#pragma omp for schedule(static, 1)
 		for (unsigned long i=0; i<bnum; i++)
 		{
-			if (first_chunk) 
+			if (nchunk==0) 
 			{
 				counter = initial_counter + i - 1;
 				//It's the IV, we don't process it
@@ -242,7 +242,7 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	initial_counter = next_initial_counter;
 
 	//If it's the first chunk, the first block was the IV, so we skip it
-	if (first_chunk) 
+	if (nchunk==0) 
 	{
 		plaintext = plaintext + 16;
 	}
@@ -257,7 +257,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	unsigned char * ciphertext;
 	static block iv;
 
-	if (!first_chunk) //not the first chunk of data, IV has already been prepended in a previous execution
+	if (nchunk>0) //not the first chunk of data, IV has already been prepended in a previous execution
 	{
 		ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
@@ -299,7 +299,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		//storing the ciphered block in the ciphertext variable
 		for (int j=0; j<BLOCKSIZE; j++)	
 		{
-			if (!first_chunk) //not the first chunk of data, IV has already been prepended in a previous execution
+			if (nchunk>0) //not the first chunk of data, IV has already been prepended in a previous execution
 			{
 				ciphertext[(i*BLOCKSIZE)+j] = b[i].left[j];
 			}
@@ -329,7 +329,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	block * ciphertext;
 	static block iv;
 
-	if (!first_chunk)
+	if (nchunk>0)
 	//IV has already been extracted in a previous execution and is already the iv static variable, 
 	//this execution will proceed normally by just using the block array given in input 
 	//and allocating bnum blocks worth of space for both the plaintext and the ciphertext copy 
@@ -393,9 +393,8 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	//If this is the first iteration, we have to free the ciphertext variable, 
 	//because we used it to copy a version of the b variable without the first block
 	//In any other case, we just made it point to main data pointer, so we can't free it
-	if (first_chunk) free(ciphertext);
+	if (nchunk==0) free(ciphertext);
 
-	first_chunk = false;
 	free(ciphertext_copy);
 
 	return plaintext;
