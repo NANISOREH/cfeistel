@@ -171,7 +171,7 @@ check_make_output() {
     fi
 }
 
-
+# Showing the usage text when the script is called without arguments
 if [ "$#" -eq 0 ]; then
     display_usage
     exit 1
@@ -278,6 +278,11 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+# Shouldn't try to encrypt less than a single block
+if [ "$file_size" -lt 16 ]; then
+    file_size=16
+fi
 
 # Launches a series of tests for a set number of sizes, using the desired values of operation mode and key
 # Every other parameter will be ignored in test suite mode

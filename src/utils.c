@@ -12,6 +12,8 @@
 #include "unistd.h"
 #include <stdint.h>
 #include "fcntl.h"
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
 
 //These variables belong to the main but are needed here to print progress info
 extern long unsigned total_file_size;
@@ -59,7 +61,7 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, e
 	}
 	unsigned long size;
 	
-	if (sscanf(last_block, "%lu", &size) < 1) //didn't find a number here, no accounting block
+	if (sscanf((char *)last_block, "%lu", &size) < 1) //didn't find a number here, no accounting block
 	{
 		return -1;
 	}
@@ -80,7 +82,7 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, e
 void print_block(unsigned char * left, unsigned char * right)
 {
 	long long unsigned checksum = 0;
-	char block_data[BLOCKSIZE+1];
+	unsigned char block_data[BLOCKSIZE];
 
 	for (int j=0; j<BLOCKSIZE/2; j++)
 	{
@@ -88,7 +90,6 @@ void print_block(unsigned char * left, unsigned char * right)
 		block_data[j] = left[j];
 		block_data[j + BLOCKSIZE/2] = right[j];
 	}
-	block_data[BLOCKSIZE] = '\0';
 	printf("\nblock text:");
 	str_safe_print(block_data, BLOCKSIZE);
 	printf("\nblock sum: \n%llu\n", checksum);
@@ -151,45 +152,6 @@ int check_end_file(FILE *stream)
     else return 0;
 }
 
-//Checks if the last block for the size accounting goes a block over the BUFSIZE bounds and only returns 1 in that case.
-//Needing this check to allow the last chunk of data to be BUFSIZE + 1 extra block instead of just BUFSIZE,
-//so that we can handle the case in which data ends exactly within the last block of the last chunk,
-//causing the accounting block to go over the BUFSIZE bounds.
-int check_last_block(FILE *stream)
-{
-    int c;
-
-    fseek(stream, BUFSIZE, SEEK_CUR); //we're at the first character of chunk x, we move to the first character of chunk x+1
-    
-    c = fgetc(stream);
-    if (c == EOF) //if the next character is the EOF it means that there's nothing else to read, rewind the file and return 0
-    {
-    	ungetc(c, stream);
-    	fseek(stream, 0 - BUFSIZE, SEEK_CUR);
-    	return 0;
-    }
-    else //there's other stuff to read, gotta dig deeper 
-    {
-    	ungetc(c, stream);
-    	fseek(stream, BLOCKSIZE, SEEK_CUR); //we're at the first character of chunk x+1, we move a block further
-
-        c = fgetc(stream);
-		ungetc(c, stream);
-		fseek(stream, 0 - (BUFSIZE + BLOCKSIZE), SEEK_CUR);
-	    if (c == EOF) //next character is EOF means the first and only block of the chunk is the accounting block, bingo!
-	    {
-			printf("are you here");
-	    	return 1;
-	    }
-	    else //next character is something other than EOF means there's other data to be read, we were not at the last chunk to begin with
-	    {
-	    	return 0;
-	    }
-    }
-
-    return -1;
-}
-
 //Prints progress information
 void show_progress_data(struct timeval current_time)
 {
@@ -207,7 +169,7 @@ void show_progress_data(struct timeval current_time)
 //Estimates the processing speed at a given point in time
 double estimate_speed (struct timeval current_time)
 {
-	double processed_data = (current_block * BLOCKSIZE)/(1024*1024);
+	double processed_data = (double) (current_block * BLOCKSIZE)/(1024*1024);
 	double elapsed_time = (current_time.tv_sec - start_time.tv_sec) + (current_time.tv_usec - start_time.tv_usec) / 1000000.0;
 	return processed_data/elapsed_time;
 }
@@ -246,7 +208,7 @@ void block_logging(block b, const char* message, unsigned long bcount)
 
 	//computes the checksum and populates the block_data string
 	long unsigned checksum = compute_checksum((unsigned char *)&b, BLOCKSIZE);
-	char block_data[BLOCKSIZE+1];
+	unsigned char block_data[BLOCKSIZE];
 	for (int j=0; j<BLOCKSIZE/2; j++)
 	{
 		block_data[j] = b.left[j];
@@ -257,7 +219,6 @@ void block_logging(block b, const char* message, unsigned long bcount)
 	printf("\n\n\n====================================================================\n");
 	printf("block %lu processed by the thread %d", bcount, omp_get_thread_num());
 	printf("%s", message);
-	block_data[BLOCKSIZE] = '\0';
 	printf("\nblock text:");
 	str_safe_print(block_data, BLOCKSIZE);
 	printf("\nblock sum: \n%lu\n", checksum);
@@ -351,6 +312,35 @@ int prepend_block(block * b, unsigned char * data)
 		data[i] = b->left[i];
 		data[i + BLOCKSIZE/2] = b->right[i];
 	}
+
+	return 0;
+}
+
+//Takes a string and derives an 8-byte key out of it using PBKDF2
+int compress_key(unsigned char *compressed_key, const char* key) 
+{
+    // Parameters for PBKDF2
+    const char* password = key;
+    const unsigned char* salt = (const unsigned char*)"salt"; // You should generate a random salt
+    int iterations = 1000; // Adjust the number of iterations as needed
+
+    // Use PBKDF2 to derive a key
+    int ret = PKCS5_PBKDF2_HMAC
+	(
+        password,
+        strlen(password), // Use strlen to get the length of the string
+        salt,
+        strlen((const char*)salt),
+        iterations,
+        EVP_sha256(), // You can choose a different hash function
+        KEYSIZE,
+        compressed_key
+    );
+
+    if (ret != 1) 
+	{
+        return -1;
+    }
 
 	return 0;
 }

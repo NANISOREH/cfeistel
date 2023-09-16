@@ -10,9 +10,39 @@
 #include "opmodes.h"
 #include "omp.h"
 
+//Schedules the round keys by compressing (or expanding, if smaller) the input key into and 8 byte master key  
+//and then using it to derive one subkey for every round of the Feistel cipher
+void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key)
+{
+	unsigned char left_part;
+	unsigned char right_part;
+	unsigned char * master_key = malloc(KEYSIZE * sizeof(unsigned char));
+
+	compress_key(master_key, key);
+
+	memcpy(round_keys[0], master_key, KEYSIZE);
+
+	for (int j = 0; j<NROUND; j++)
+	{
+		for (int i = 0; i<KEYSIZE; i++) 
+		{			
+			master_key[i] = (master_key[i] + 30 - i) % 256;	
+			split_byte(&left_part, &right_part, master_key[i]);
+			merge_byte(&master_key[i], right_part, left_part);
+		}
+		p_box(master_key);
+		
+		//the altered key generated in the iteration j is saved as round key number j,
+		//the final result is an extended key stored in the round_keys matrix
+		memcpy(round_keys[j], master_key, KEYSIZE);
+	}
+
+	free(master_key);
+}
+
 //Receives and organizes input data, starts execution of the cipher in encryption mode. 
 //Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
-unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen, unsigned long total_file_size)
+unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, char * key, enum mode chosen, unsigned long total_file_size)
 {	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -127,27 +157,3 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
     return NULL;
 }
 
-//Schedules the round keys by extending the 8 bytes given in input
-void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], unsigned char * key)
-{
-	unsigned char left_part;
-	unsigned char right_part;
-	unsigned char master_key[KEYSIZE];
-	memcpy(master_key, key, KEYSIZE);
-	memcpy(round_keys[0], master_key, KEYSIZE);
-
-	for (int j = 0; j<NROUND; j++)
-	{
-		for (int i = 0; i<KEYSIZE; i++) 
-		{			
-			master_key[i] = (master_key[i] + 30 - i) % 256;	
-			split_byte(&left_part, &right_part, master_key[i]);
-			merge_byte(&master_key[i], right_part, left_part);
-		}
-		p_box(master_key);
-		
-		//the altered key generated in the iteration j is saved as round key number j,
-		//the final result is an extended key stored in the round_keys matrix
-		memcpy(round_keys[j], master_key, KEYSIZE);
-	} 
-}

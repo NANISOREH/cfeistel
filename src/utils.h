@@ -16,8 +16,8 @@ void merge_byte(unsigned char * target, unsigned char left_part, unsigned char r
 void swap_bit(unsigned char * first, unsigned char * second, unsigned int pos_first, unsigned int pos_second);
 long unsigned create_nonce(block * nonce);
 void block_xor(block *result, const block *first, const block *second);
+int compress_key(unsigned char *compressed_key, const char* key) ;
 //Data flow utils
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, enum mode chosen, unsigned long total_file_size);
 int check_end_file(FILE *stream);
-int check_last_block(FILE *stream);
 int prepend_block(block * b, unsigned char * data);

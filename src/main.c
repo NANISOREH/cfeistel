@@ -4,10 +4,10 @@
 #include "stdbool.h"
 #include "common.h"
 #include "utils.h"
+#include "block.h"
 #include "feistel.h"
 #include "unistd.h" 
 #include "fcntl.h"
-#include "block.h"
 #include "sys/time.h"
 #include "omp.h"
 #include "getopt.h"
@@ -19,7 +19,7 @@ enum operation to_do = DEFAULT_OP;
 enum outmode output_mode = DEFAULT_OUT;
 char * infile = "in";
 char * outfile = "out";
-unsigned char * key;
+char * key = NULL;
 int saved_stdout;
 
 //This variable stores the currently processing block relative to the whole file
@@ -40,15 +40,20 @@ int main(int argc, char * argv[])
 {
 	unsigned char * data;
 	unsigned int final_chunk_flag = 0;
-	key = calloc (KEYSIZE, sizeof(char));
-	memcpy(key, "secretkey", KEYSIZE);
 	unsigned char * result;
 	unsigned long num_blocks;
-	//This flag will signal the present of a final chunk that's only formed by the accounting block for the previous chunk
+	//This flag will signal a final chunk that's only formed by the accounting block for the previous chunk
 	//(the last one with actual data)
 	bool acc_only_chunk = false;
 
 	if (command_selection(argc, argv) == -1) return -1;
+
+	//Key not received in input, we'll use "secretkey" as key
+	if (key == NULL)
+	{
+		key = calloc (KEYSIZE+1, sizeof(char));
+		strncpy(key, "secretkey", KEYSIZE);
+	}
 
 	FILE * read_file;
 	FILE * write_file;
@@ -203,7 +208,8 @@ int command_selection(int argc, char *argv[])
         switch (opt) 
 		{
             case 'k':
-                memcpy(key, optarg, KEYSIZE);
+				key = malloc((strlen(optarg)+1) * sizeof(char));
+                strcpy(key, optarg);
                 break;
             case 'i':
                 infile = optarg;

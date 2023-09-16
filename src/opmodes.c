@@ -13,7 +13,6 @@
 #include "omp.h"
 #include "stdint.h"
 
-
 //These variables belong to the main, but are needed here to keep track of the processing
 extern long unsigned total_file_size;
 extern long unsigned current_block;

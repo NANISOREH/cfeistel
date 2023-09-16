@@ -1,8 +1,8 @@
 CFLAGS=
-CPPFLAGS=-fopenmp
+CPPFLAGS=-fopenmp -lssl -lcrypto
 
 cfeistel: src/main.o src/utils.o src/feistel.o src/opmodes.o src/block.o
-		gcc src/main.o src/utils.o src/feistel.o src/opmodes.o src/block.o $(CFLAGS) -fopenmp -o cfeistel
+		gcc src/main.o src/utils.o src/feistel.o src/opmodes.o src/block.o $(CFLAGS) -fopenmp -lssl -lcrypto -o cfeistel
 		rm src/main.o src/utils.o src/feistel.o src/opmodes.o src/block.o  
 
 utils.o: src/utils.c
