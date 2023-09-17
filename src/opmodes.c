@@ -8,10 +8,10 @@
 #include "common.h"
 #include "utils.h"
 #include "feistel.h"
-#include "opmodes.h"
 #include "sys/time.h"
 #include "omp.h"
 #include "stdint.h"
+#include <openssl/asn1.h>
 
 //These variables belong to the main, but are needed here to keep track of the processing
 extern long unsigned total_file_size;
@@ -23,8 +23,8 @@ extern int nchunk;
 unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	struct timeval current_time;
-	unsigned char * ciphertext;
-	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
+	static unsigned char * ciphertext;
+	if (nchunk == 0) ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 	chunk_size = (BLOCKSIZE * bnum) * sizeof(unsigned char);
 
@@ -40,14 +40,14 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 			show_progress_data(current_time);
 		}
 		#pragma omp critical
-		block_logging(b[i], "\n----------ECB-------BEFORE-----------", i);
+		block_logging((unsigned char *)&b[i], "\n----------ECB-------BEFORE-----------", i);
 
 		//applying the cipher on the current block
-		process_block(b[i].left, b[i].right, round_keys);
+		process_block((unsigned char *)&b[i], b[i].left, b[i].right, round_keys);
 
 		//logging (post-processing)
 		#pragma omp critical
-		block_logging(b[i], "\n----------ECB-------AFTER-----------", i);
+		block_logging((unsigned char *)&b[i], "\n----------ECB-------AFTER-----------", i);
 
 		//appending the result to the ciphertext variable
 		for (int j = 0; j < BLOCKSIZE; j++)	
@@ -61,7 +61,7 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 //Executes the cipher in CTR mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	unsigned char * ciphertext;
+	static unsigned char * ciphertext;
 	struct timeval current_time;
 	block counter_block;
 	block iv;
@@ -80,6 +80,7 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	}
 	else //not the first chunk of data, IV has already been prepended in a previous execution
 	{
+		free(ciphertext);
 		ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
 		initial_counter = next_initial_counter;
@@ -109,17 +110,17 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 			}
 
 			#pragma omp critical
-			block_logging(b[i], "\n----------CTR-------BEFORE-----------", i);
+			block_logging((unsigned char *)&b[i], "\n----------CTR-------BEFORE-----------", i);
 			
 			//applying the cipher on the counter block and incrementing the counter
-			process_block(counter_block.left, counter_block.right, round_keys);
+			process_block((unsigned char *)&counter_block, counter_block.left, counter_block.right, round_keys);
 
 			//xor between the ciphered counter block and the current block of plaintext/ciphertext
 			block_xor(&b[i], &b[i], &counter_block);
 			
 			//logging (post-processing)
 			#pragma omp critical
-			block_logging(b[i], "\n----------CTR-------AFTER-----------", i);
+			block_logging((unsigned char *) &b[i], "\n----------CTR-------AFTER-----------", i);
 
 			//storing the ciphered block in the ciphertext variable
 			for (int j=0; j<BLOCKSIZE; j++)	
@@ -151,7 +152,7 @@ unsigned char * encrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 //Executes the cipher in CTR mode; takes a block array, the total number of blocks and the round keys, returns processed data.
 unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	unsigned char * plaintext;
+	static unsigned char * plaintext;
 	block * ciphertext;
 	struct timeval current_time;
 	block counter_block;
@@ -162,6 +163,7 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	static unsigned long next_initial_counter;
 
 	ciphertext = b;
+	free(plaintext);
 	plaintext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 
 	if (nchunk>0) //not the first chunk of data, IV has already been taken from a previous execution
@@ -210,17 +212,17 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 			}
 
 			#pragma omp critical
-			block_logging(ciphertext[i], "\n----------CTR-------BEFORE-----------", i);
+			block_logging((unsigned char *)&ciphertext[i], "\n----------CTR-------BEFORE-----------", i);
 			
 			//applying the cipher on the counter block and incrementing the counter
-			process_block(counter_block.left, counter_block.right, round_keys);
+			process_block((unsigned char *) &counter_block, counter_block.left, counter_block.right, round_keys);
 
 			//xor between the ciphered counter block and the current block of plaintext/ciphertext
 			block_xor(&ciphertext[i], &ciphertext[i], &counter_block);
 			
 			//logging (post-processing)
 			#pragma omp critical
-			block_logging(ciphertext[i], "\n----------CTR-------AFTER-----------", i);
+			block_logging((unsigned char *)&ciphertext[i], "\n----------CTR-------AFTER-----------", i);
 			
 			//storing the result of the xor in the output variable
 			for (unsigned long j=0; j<BLOCKSIZE; j++)	
@@ -253,11 +255,12 @@ unsigned char * decrypt_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	struct timeval current_time;
-	unsigned char * ciphertext;
+	static unsigned char * ciphertext;
 	static block iv;
 
 	if (nchunk>0) //not the first chunk of data, IV has already been prepended in a previous execution
 	{
+		free(ciphertext);
 		ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 		chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
 	}
@@ -273,6 +276,8 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	//to store the ciphertext of block x, needed to encrypt the block x+1
 	block prev_ciphertext = iv;
 
+	block_logging((unsigned char *)&prev_ciphertext, "\n----------CBC(ENC)-------IV-----------", 0);
+
 	//launching the feistel algorithm on every block
 	for (unsigned long i=0; i<bnum; ++i) 
 	{
@@ -283,17 +288,17 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time);
 		}
-		block_logging(b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
+		block_logging((unsigned char *)&b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
 
 		//XORing the current block x with the ciphertext of the block x-1
 		block_xor(&b[i], &b[i], &prev_ciphertext);
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
-		process_block(b[i].left, b[i].right, round_keys);
+		process_block((unsigned char *)&b[i], b[i].left, b[i].right, round_keys);
 		memcpy(&prev_ciphertext, &b[i], sizeof(block));
 
 		//logging (post-encryption)
-		block_logging(b[i], "\n----------CBC(ENC)-------AFTER-----------", i);
+		block_logging((unsigned char *)&b[i], "\n----------CBC(ENC)-------AFTER-----------", i);
 		
 		//storing the ciphered block in the ciphertext variable
 		for (int j=0; j<BLOCKSIZE; j++)	
@@ -319,7 +324,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
 	struct timeval current_time;
-	unsigned char * plaintext;
+	static unsigned char * plaintext;
 
 	//ciphertext_copy will contain a copy of the whole ciphertext: for cbc decryption you need the ciphertext of the block i-1
 	//to decrypt the block i. Since I'm operating the feistel algorithm in-place I needed to store these ciphertext blocks in advance.
@@ -333,7 +338,8 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	//this execution will proceed normally by just using the block array given in input 
 	//and allocating bnum blocks worth of space for both the plaintext and the ciphertext copy 
 	{
-		ciphertext = b; 
+		ciphertext = b;
+		free(plaintext);
 		plaintext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 		ciphertext_copy = malloc(bnum * sizeof(block));
 		memcpy(ciphertext_copy, ciphertext, bnum * sizeof(block));
@@ -356,13 +362,15 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		bnum--;
 	}
 
+	block_logging((unsigned char *)&iv, "\n----------CBC(DEC)-------IV-----------", 0);
+
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
 	#pragma omp parallel for
 	for (unsigned long i=0; i<bnum; ++i) 
 	{	
 		//logging (pre-decryption)
 		#pragma omp critical
-		block_logging(ciphertext[i], "\n----------CBC(DEC)------BEFORE-----------", i);
+		block_logging((unsigned char *)&ciphertext[i], "\n----------CBC(DEC)------BEFORE-----------", i);
 		current_block++;
 		if (i % 10000 == 0)
 		{
@@ -371,7 +379,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		}
 
 		//First thing, you run feistel on the block,...
-		process_block(ciphertext[i].left, ciphertext[i].right, round_keys);
+		process_block((unsigned char *)&ciphertext[i], ciphertext[i].left, ciphertext[i].right, round_keys);
 
 		if (i == 0) //...if it's the first block, you xor it with the IV...
 			block_xor(&ciphertext[i], &ciphertext[i], &iv); 
@@ -380,7 +388,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 
 		//logging (post-decryption)
 		#pragma omp critical
-		block_logging(ciphertext[i], "\n----------CBC(DEC)-------AFTER-----------", i);
+		block_logging((unsigned char *)&ciphertext[i], "\n----------CBC(DEC)-------AFTER-----------", i);
 		
 		//storing the deciphered block in plaintext variable
 		for (int j=0; j<BLOCKSIZE; j++)	plaintext[(i*BLOCKSIZE)+j] = ciphertext[i].left[j];
@@ -399,91 +407,164 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	return plaintext;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void operate_ctr_mode(unsigned char * processed, block * to_process, unsigned long initial_counter, unsigned long * next_initial_counter, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
+//Executes the cipher in OFB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
+unsigned char * encrypt_ofb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
 {
-	unsigned int counter = 0;
-	block counter_block;
 	struct timeval current_time;
+	unsigned char * keystream;
+	static unsigned char * ciphertext = NULL;
+	static block iv;
+	//Casting the block pointer to a char one because it's comfier for stream-like logic
+	unsigned char * plaintext = (unsigned char*)b;
 
-	#pragma omp parallel private (counter, counter_block)
-	{	
-		counter = initial_counter;
-		//launching the feistel algorithm on every block
-		#pragma omp for schedule(static, 1)
-		for (unsigned long i=0; i<bnum; i++)
-		{
-			counter = initial_counter + i;
-
-			//initializing the counter block for this iteration 
-			derive_block_from_number(counter, &counter_block);
-
-			#pragma omp critical
-			block_logging(counter_block, "\n----------CTR(DEC)-------COUNTER BLOCK-----------", i);
-
-			//logging (pre-processing)
-			current_block++;
-			if (i % 100000 == 0)
-			{
-				gettimeofday(&current_time, NULL);
-				show_progress_data(current_time);
-			}
-
-			#pragma omp critical
-			block_logging(to_process[i], "\n----------CTR-------BEFORE-----------", i);
-			
-			//applying the cipher on the counter block and incrementing the counter
-			process_block(counter_block.left, counter_block.right, round_keys);
-
-			//xor between the ciphered counter block and the current block of plaintext/ciphertext
-			block_xor(&to_process[i], &to_process[i], &counter_block);
-			
-			//logging (post-processing)
-			#pragma omp critical
-			block_logging(to_process[i], "\n----------CTR-------AFTER-----------", i);
-			
-			//storing the result of the xor in the output variable
-			for (unsigned long j=0; j<BLOCKSIZE; j++)	
-			{
-				processed[((i)*BLOCKSIZE)+j] = to_process[i].left[j];
-			}
-
-			//It's the last iteration, setting the starting counter for the next chunk
-			if (i == bnum - 1 ) *next_initial_counter = counter + 1;
-		}	
+	if (nchunk>0) //not the first chunk of data, IV has already been prepended in a previous execution
+	{
+		if (nchunk == 1) ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+		chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
 	}
+	else //first chunk of data, IV has to be prepended to the ciphertext in this execution
+	{
+	 	ciphertext = malloc(BLOCKSIZE * (bnum+1) * sizeof(unsigned char));
+		chunk_size = BLOCKSIZE * (bnum+1) * sizeof(unsigned char);
+		create_nonce(&iv);
+		prepend_block(&iv, ciphertext);
+	}
+
+	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+
+	block_logging((unsigned char *)&iv, "\n----------OFB(ENC)------IV-----------", 0);
+
+	//launching the cycle that will create the OFB keystream
+	for (unsigned long i=0; i<bnum; ++i) 
+	{
+		//logging (pre-encryption)
+		current_block++;
+		if (i % 10000 == 0)
+		{
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time);
+		}
+		
+		//executing the encryption on the last processed keystream block
+		if (i==0)
+		{
+			process_block(&keystream[i*BLOCKSIZE], iv.left, iv.right, round_keys);
+		}
+		else 
+		{
+			process_block(&keystream[i*BLOCKSIZE], &keystream[(i-1)*BLOCKSIZE], &keystream[((i-1)*BLOCKSIZE) + BLOCKSIZE/2], round_keys);
+		}
+	}
+
+	//In case it's the first chunk, we move the ciphertext pointer by a block
+	//So that we will not overwrite the IV
+	if (nchunk == 0) ciphertext = ciphertext + 16;
+
+	//launching the cycle that will XOR the keystream and the plaintext to produce the ciphertext
+	#pragma omp parallel for
+	for (size_t i = 0; i < bnum * BLOCKSIZE; i++) 
+	{
+		ciphertext[i] = keystream[i] ^ plaintext[i];
+
+		//The position where we start printing would be i + (BLOCKSIZE-1):
+		//if BLOCKSIZE=16, then we're here at iteration i = 16k - 1 for some value of k, and we want the index we had at i = 15k
+		//If we subtract (BLOCKSIZE - 1) to the current index we get i = 16k-1-15 = 16k-16 = 15k, so we get exactly i = 15k
+		//which is a multiple of BLOCKSIZE and therefore the last used "block index"
+		if (i > 0 && (i+1) % BLOCKSIZE == 0)
+		{
+			block_logging(&keystream[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------keystream-----------", (i/BLOCKSIZE));
+			block_logging(&plaintext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------plaintext-----------", i/BLOCKSIZE);
+			block_logging(&ciphertext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------ciphertext-----------", i/BLOCKSIZE);
+		}
+    }
+
+	//The iv block for the next chunk will be the last block of the keystream
+	memcpy(&iv, &keystream[(bnum - 1) * BLOCKSIZE], sizeof(block));
+	free(keystream);
+
+	//Before returning the ciphertext, we have to move the ciphertext pointer back by a block to
+	//avoid leaving the IV out (we moved it forward before to prevent overwriting it)
+	if (nchunk == 0) ciphertext = ciphertext - 16;
+
+	return ciphertext;
+}
+
+//Executes the cipher in OFB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
+unsigned char * decrypt_ofb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
+{
+	static unsigned char * plaintext;
+	static unsigned char * keystream; 
+	//Casting the block pointer to a char one because it's comfier for stream-like logic
+	unsigned char * ciphertext = (unsigned char *)b;
+	struct timeval current_time;
+	static block iv;
+
+	free(plaintext);
+	plaintext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+
+	if (nchunk == 0) //first chunk of data, IV (content of counter_block) has to be taken from the ciphertext in this execution
+	{
+		//We will set the chunksize to BLOCKSIZE less than the data we received in input
+		//to account for the first block not containing actual data 
+		bnum--;
+		//Copying the first block of data into the iv variable
+		memcpy(&iv, &ciphertext[0], BLOCKSIZE * sizeof(unsigned char));
+	}
+
+	chunk_size = BLOCKSIZE * (bnum) * sizeof(unsigned char);
+
+	block_logging((unsigned char *)&b[0], "\n----------OFB(DEC)------IV-----------", 0);
+
+	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+
+	//launching the cycle that will create the OFB keystream
+	for (unsigned long i=0; i<bnum; ++i)
+	//we end one iteration before the usual, because the IV block doesn't need to be XORed with a keystream block
+	{
+		//logging (pre-encryption)
+		current_block++;
+		if (i % 10000 == 0)
+		{
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time);
+		}
+		
+		//executing the encryption on the last processed keystream block
+		if (i==0)
+		{
+			process_block(&keystream[i*BLOCKSIZE], iv.left, iv.right, round_keys);
+		}
+		else 
+		{
+			process_block(&keystream[i*BLOCKSIZE], &keystream[(i-1)*BLOCKSIZE], &keystream[((i-1)*BLOCKSIZE) + BLOCKSIZE/2], round_keys);
+		}
+	}
+
+	//If it's the fist block, we shift the ciphertext forward by a block to jump the IV
+	if (nchunk == 0) ciphertext = ciphertext + BLOCKSIZE;
+
+	//launching the cycle that will XOR the keystream and the plaintext to produce the ciphertext
+	#pragma omp parallel for
+	for (size_t i = 0; i < bnum * BLOCKSIZE; i++) 
+	{
+		plaintext[i] = keystream[i] ^ ciphertext[i];
+		
+		//If i+1 is a multiple of blocksize, it means we just finished XORing a whole block, we can print it
+		if (i > 0 && (i+1) % BLOCKSIZE == 0)
+		{
+			//The position where we start printing would be i + (BLOCKSIZE-1):
+			//if BLOCKSIZE=16, then we're here at iteration i = 16k - 1 for some value of k, and we want the index we had at i = 15k
+			//If we subtract (BLOCKSIZE - 1) to the current index we get i = 16k-1-15 = 16k-16 = 15k, so we get exactly i = 15k
+			//which is a multiple of BLOCKSIZE and therefore the last used "block index"
+			block_logging(&keystream[(i - (BLOCKSIZE - 1))], "\n----------OFB(DEC)------keystream-----------", (i/BLOCKSIZE));
+			block_logging(&ciphertext[(i - (BLOCKSIZE - 1))], "\n----------OFB(DEC)------ciphertext-----------", i/BLOCKSIZE);
+			block_logging(&plaintext[(i - (BLOCKSIZE - 1))], "\n----------OFB(DEC)------plaintext-----------", i/BLOCKSIZE);
+		}
+    }
+
+	//The iv block for the next chunk will be the last block of the keystream
+	memcpy(&iv, &keystream[(bnum - 1) * BLOCKSIZE], sizeof(block));
+	free(keystream);
+
+	return plaintext;
 }

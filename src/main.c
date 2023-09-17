@@ -225,6 +225,8 @@ int command_selection(int argc, char *argv[])
                     chosen = cbc;
                 else if (strcmp(optarg, "ctr") == 0)
                     chosen = ctr;
+				else if (strcmp(optarg, "ofb") == 0)
+                    chosen = ofb;
                 else 
 				{
                     fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");

@@ -1,8 +1,8 @@
 //Debug/logging utils
 void print_byte(char c);
-void block_logging(block b, const char* message, unsigned long bcount);
+void block_logging(unsigned char * b, const char* message, unsigned long bcount);
 double timeval_diff_seconds(struct timeval start, struct timeval end);
-long unsigned compute_checksum (unsigned char * data, long unsigned length);
+long unsigned compute_checksum(const unsigned char *data, const long unsigned size);
 void exit_message(int num_strings, ...);
 void show_progress_data(struct timeval current_time);
 double estimate_speed (struct timeval current_time);

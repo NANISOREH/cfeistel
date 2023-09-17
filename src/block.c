@@ -114,6 +114,8 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
     	return encrypt_ctr_mode(b, bcount, round_keys);
+    else if (chosen == ofb)
+    	return encrypt_ofb_mode(b, bcount, round_keys);
 
     return NULL;
 }
@@ -130,7 +132,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
 
 	//scheduling the round keys starting from the master key given
 	schedule_key(round_keys, key);	//see the function schedule_key for info
-	if (chosen != ctr) //round keys sequence has to be inverted for decryption, except for ctr mode
+	if (chosen != ctr && chosen != ofb) //round keys sequence has to be inverted for decryption, except for ctr mode
 	{
 		memcpy(temp, round_keys, NROUND * KEYSIZE);
 		int j=NROUND-1;
@@ -153,6 +155,8 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
     	return decrypt_ctr_mode(b, bcount, round_keys);
+    else if (chosen == ofb)
+    	return decrypt_ofb_mode(b, bcount, round_keys);
 
     return NULL;
 }

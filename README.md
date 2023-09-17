@@ -1,6 +1,6 @@
 # cfeistel
 <p>Implementation of a basic Feistel cipher in C. Needless to say, it's just a glorified C programming exercise and NOT intended to be used as actual crypto.
-It operates on 16 bytes blocks and an 8 bytes key, in CBC, ECB and CTR mode, on files of any size.
+It operates on 16 bytes blocks and an 8 bytes key, in CBC, ECB, OFB and CTR mode, on files of any size.
 The key is given as an input string as of now, but I'm going to make it possible to specify a file as key. You can input a key of any size, and PBKDF2 will shrink it into an 8 byte key.</p>
 <p>The "f" part of the cipher has no real cryptographic value but still serves the purpose of showing a Feistel cipher in motion. It aspires to be a very simple SP network.</p>
 <p>I plan on implementing more modes of operation and a proper padding scheme and/or ciphertext stealing. 
@@ -23,7 +23,7 @@ The <code>QUIET</code> compiler flag disables the usual info output.</p>
 
 - `enc` provides encryption and `dec` provides decryption.  
 - `-k <key>` specifies a string to be used as a key.
-- `-m <mode>` specifies the mode of operation, and accepts *ecb*, *cbc*, and *ctr*.
+- `-m <mode>` specifies the mode of operation, and accepts *ecb*, *cbc*, *ctr* and *ofb*.
 - `-i <infile>` specifies the input file to be encrypted or decrypted.
 - `-o <outfile>` specifies the output file where the result will be written.
 

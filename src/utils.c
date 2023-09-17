@@ -15,6 +15,9 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+#define CRC_POLYNOMIAL 0xEDB88320UL
+#define CRC_INITIAL_VALUE 0xFFFFFFFFUL
+
 //These variables belong to the main but are needed here to print progress info
 extern long unsigned total_file_size;
 extern long unsigned current_block;
@@ -200,19 +203,18 @@ void exit_message(int num_strings, ...)
 
 //Given a block, it prints out its content and checksum
 //Useful for debugging, you can access these per-block logs by compiling with the macro DEBUG
-void block_logging(block b, const char* message, unsigned long bcount)
+void block_logging(unsigned char * b, const char* message, unsigned long bcount)
 {
 	#ifndef DEBUG
 		return;
 	#endif
 
 	//computes the checksum and populates the block_data string
-	long unsigned checksum = compute_checksum((unsigned char *)&b, BLOCKSIZE);
+	long unsigned checksum = compute_checksum(b, BLOCKSIZE);
 	unsigned char block_data[BLOCKSIZE];
-	for (int j=0; j<BLOCKSIZE/2; j++)
+	for (int j=0; j<BLOCKSIZE; j++)
 	{
-		block_data[j] = b.left[j];
-		block_data[j + BLOCKSIZE/2] = b.right[j];
+		block_data[j] = b[j];
 	}
 
 	//prints everything out
@@ -223,19 +225,20 @@ void block_logging(block b, const char* message, unsigned long bcount)
 	str_safe_print(block_data, BLOCKSIZE);
 	printf("\nblock sum: \n%lu\n", checksum);
 	printf("====================================================================\n");
-	checksum = 0;
 }
 
-//Computes a very naive checksum of a given chunk of data
-long unsigned compute_checksum (unsigned char * data, long unsigned length)
-{
-	long long unsigned checksum = 0;
-	for (int j=0; j<length; j++)
-	{
-		checksum = checksum + data[j];
-	}
-
-	return checksum;
+// Calculate the CRC checksum for a block of data
+long unsigned compute_checksum(const unsigned char *data, const long unsigned size) {
+    long unsigned crc = CRC_INITIAL_VALUE;
+    
+    for (size_t i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc >> 1) ^ ((crc & 1) ? CRC_POLYNOMIAL : 0);
+        }
+    }
+    
+    return ~crc; 
 }
 
 double timeval_diff_seconds(struct timeval start, struct timeval end) 
