@@ -9,16 +9,29 @@
 #include "feistel.h"
 #include "opmodes.h"
 #include "omp.h"
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
 
 //Schedules the round keys by compressing (or expanding, if smaller) the input key into and 8 byte master key  
 //and then using it to derive one subkey for every round of the Feistel cipher
-void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key)
+void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key, const unsigned char * salt)
 {
 	unsigned char left_part;
 	unsigned char right_part;
 	unsigned char * master_key = malloc(KEYSIZE * sizeof(unsigned char));
 
-	compress_key(master_key, key);
+    // Use PBKDF2 to derive a key
+    int ret = PKCS5_PBKDF2_HMAC
+	(
+        key,
+        strlen(key),
+		salt,
+        BLOCKSIZE,
+        1000,
+        EVP_sha256(), 
+        KEYSIZE,
+        master_key
+    );
 
 	memcpy(round_keys[0], master_key, KEYSIZE);
 
@@ -42,7 +55,7 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key)
 
 //Receives and organizes input data, starts execution of the cipher in encryption mode. 
 //Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
-unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, char * key, enum mode chosen, unsigned long total_file_size)
+unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, char * key, block header[2], enum mode chosen)
 {	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -50,9 +63,9 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	unsigned long bcount=0;
 
 	block last_block;
-	snprintf(last_block.left, BLOCKSIZE, "%lu", data_len);
+	snprintf((char *)&last_block, BLOCKSIZE, "%lu", data_len);
 	//scheduling the round keys starting from the master key given
-	schedule_key(round_keys, key);	//see the function schedule_key for info
+	schedule_key(round_keys, key, (unsigned char *)&header[0]);	//see the function schedule_key for info
 
    	//if the size of the last chunk is not multiple of the block size,
 	//remainder will be the number of leftover bytes that will go into the padded block
@@ -109,20 +122,20 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	}
 
     if (chosen == cbc)
-    	return encrypt_cbc_mode(b, bcount, round_keys);
+    	return encrypt_cbc_mode(b, bcount, round_keys, header[1]);
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
-    	return encrypt_ctr_mode(b, bcount, round_keys);
+    	return operate_ctr_mode(b, bcount, round_keys, header[1]);
     else if (chosen == ofb)
-    	return encrypt_ofb_mode(b, bcount, round_keys);
+    	return operate_ofb_mode(b, bcount, round_keys, header[1]);
 
     return NULL;
 }
 
 //Receives and organizes input data, starts execution of the cipher in decryption mode. 
 //Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
-unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, unsigned char * key, enum mode chosen)
+unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, char * key, block header[2], enum mode chosen)
 {
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -131,7 +144,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
 	unsigned long bcount=0;
 
 	//scheduling the round keys starting from the master key given
-	schedule_key(round_keys, key);	//see the function schedule_key for info
+	schedule_key(round_keys, key, (unsigned char *)&header[0]);	//see the function schedule_key for info
 	if (chosen != ctr && chosen != ofb) //round keys sequence has to be inverted for decryption, except for ctr mode
 	{
 		memcpy(temp, round_keys, NROUND * KEYSIZE);
@@ -145,18 +158,17 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, uns
 	}
 
 	bcount = (data_len * sizeof(char)) / BLOCKSIZE;
-	//No need to reallocate: after decryption plaintext will never be greater than the ciphertext was:
-	//it should be okay to just assign the address of the raw input data to the block pointer b
-	block * b = (block *) data;
 
+	//No need to reallocate: after decryption plaintext will never be greater than the ciphertext was:
+	//it should be okay to just paass the address of the raw input data 
     if (chosen == cbc)
-    	return decrypt_cbc_mode(b, bcount, round_keys);
+    	return decrypt_cbc_mode((block *)data, bcount, round_keys, header[1]);
     else if (chosen == ecb)
-    	return operate_ecb_mode(b, bcount, round_keys);
+    	return operate_ecb_mode((block *)data, bcount, round_keys);
     else if (chosen == ctr)
-    	return decrypt_ctr_mode(b, bcount, round_keys);
+    	return operate_ctr_mode((block *)data, bcount, round_keys, header[1]);
     else if (chosen == ofb)
-    	return decrypt_ofb_mode(b, bcount, round_keys);
+    	return operate_ofb_mode((block *)data, bcount, round_keys, header[1]);
 
     return NULL;
 }

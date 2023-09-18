@@ -280,7 +280,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Shouldn't try to encrypt less than a single block
-if [ "$file_size" -lt 16 ]; then
+if [[ "$file_size" -lt 16 && "$unit_flag" = "B" ]]; then
     file_size=16
 fi
 

@@ -12,8 +12,6 @@
 #include "unistd.h"
 #include <stdint.h>
 #include "fcntl.h"
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
 
 #define CRC_POLYNOMIAL 0xEDB88320UL
 #define CRC_INITIAL_VALUE 0xFFFFFFFFUL
@@ -68,12 +66,6 @@ unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, e
 	{
 		return -1;
 	}
-
-	//A bit of a hack here: I know that if the operation mode involved an IV block that was excluded from decryption, 
-	//the last chunk will be larger by one block.
-	//I should solve this by refactoring the accounting block management and make it report the size of the last block, not the last chunk.
-	//This way I could always correctly derive the size of last chunk in any case
-	//if (chosen == ctr) size += BLOCKSIZE;
 
 	for (unsigned long i = size; i<num_blocks * BLOCKSIZE; i++) 
 		result[i] = '\0';
@@ -315,35 +307,6 @@ int prepend_block(block * b, unsigned char * data)
 		data[i] = b->left[i];
 		data[i + BLOCKSIZE/2] = b->right[i];
 	}
-
-	return 0;
-}
-
-//Takes a string and derives an 8-byte key out of it using PBKDF2
-int compress_key(unsigned char *compressed_key, const char* key) 
-{
-    // Parameters for PBKDF2
-    const char* password = key;
-    const unsigned char* salt = (const unsigned char*)"salt"; // You should generate a random salt
-    int iterations = 1000; // Adjust the number of iterations as needed
-
-    // Use PBKDF2 to derive a key
-    int ret = PKCS5_PBKDF2_HMAC
-	(
-        password,
-        strlen(password), // Use strlen to get the length of the string
-        salt,
-        strlen((const char*)salt),
-        iterations,
-        EVP_sha256(), // You can choose a different hash function
-        KEYSIZE,
-        compressed_key
-    );
-
-    if (ret != 1) 
-	{
-        return -1;
-    }
 
 	return 0;
 }

@@ -11,7 +11,6 @@
 #include "sys/time.h"
 #include "omp.h"
 #include "getopt.h"
-
 #include <bits/getopt_core.h>
 
 enum mode chosen = DEFAULT_MODE;
@@ -45,6 +44,15 @@ int main(int argc, char * argv[])
 	//This flag will signal a final chunk that's only formed by the accounting block for the previous chunk
 	//(the last one with actual data)
 	bool acc_only_chunk = false;
+	//Array of 2 blocks that will contain IV and key derivation salt 
+	block header[2];
+	FILE * read_file;
+	FILE * write_file;
+	saved_stdout = dup(1);
+
+	#ifdef SEQ
+		omp_set_num_threads(1);
+	#endif	
 
 	if (command_selection(argc, argv) == -1) return -1;
 
@@ -55,11 +63,8 @@ int main(int argc, char * argv[])
 		strncpy(key, "secretkey", KEYSIZE);
 	}
 
-	FILE * read_file;
-	FILE * write_file;
-	saved_stdout = dup(1);
-
-	if (output_mode == replace) 
+	if (output_mode == replace) //Sets up the output filename for replace mode:
+	//at the end of the processing, the provided file will be removed and the new file will take its name
 	{
 		outfile = malloc ((strlen(infile) + 4) * sizeof(char));
 		strcpy(outfile, infile);
@@ -78,31 +83,38 @@ int main(int argc, char * argv[])
 		return -1;
 	}
 
+	if (to_do == enc) //We need to generate the header and prepend it to the ciphertext
+	{
+		create_nonce(&header[0]);
+		create_nonce(&header[1]);
+		fwrite(&header, BLOCKSIZE, 2, write_file);
+	}
+	else //We need to populate the header with the first two blocks of the ciphertext 
+	{
+		fread(&header[0], BLOCKSIZE, 1, read_file);
+		fread(&header[1], BLOCKSIZE, 1, read_file);
+	}
+
 	//calculating the total file size and setting start time 
 	fseek(read_file, 0, SEEK_END);
 	total_file_size = ftell(read_file);
 	rewind(read_file);
-	gettimeofday(&start_time, NULL);
+	if (to_do == dec) //In decryption, we have to ignore the first two blocks (header)
+	{
+		fseek(read_file, 2*BLOCKSIZE, SEEK_SET);
+		total_file_size -= 2*BLOCKSIZE;
+	}
 
-	#ifdef SEQ
-    	omp_set_num_threads(1);
-	#endif
+	gettimeofday(&start_time, NULL);
 
 	//This loop will continue reading from read_file, processing data in chunks of BUFSIZE bytes and writing them to write_file,
 	//until it reaches the last chunk of readable data. The standard way to understand when it's the last one is just checking if
 	//fread read less than BUFSIZE bytes
 	while (1)
 	{			
-		if (to_do == dec && nchunk == 0 && chosen != ecb) //first chunk, we need to read one extra block (header)
-		//only needed in decryption, for modes that require an IV/nonce
-		{
-			chunk_size = fread(data, sizeof(char), BUFSIZE + BLOCKSIZE, read_file);
-		}
-		else //normally reading BUFSIZE bytes
-		{
-			data = (unsigned char *)realloc(data, BUFSIZE * sizeof(unsigned char));
-			chunk_size = fread(data, sizeof(char), BUFSIZE, read_file);
-		}
+		//Trying to read BUFSIZE characters, saving the number of read characters in chunk_size
+		data = (unsigned char *)realloc(data, BUFSIZE * sizeof(unsigned char));
+		chunk_size = fread(data, sizeof(char), BUFSIZE, read_file);
 		
 		//If we read exactly BLOCKSIZE bytes, then the current chunk only contains the accounting block for the previous one
 		//This only occurs when the actual data size falls within BLOCKSIZE bytes of a BUFSIZE multiple
@@ -117,9 +129,12 @@ int main(int argc, char * argv[])
 		else if (check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
 
 		//starting the correct operation and returning -1 in case there's an error
-		if (to_do == enc) result = encrypt_blocks(data, chunk_size, key, chosen);
-		else if (to_do == dec) result = decrypt_blocks(data, chunk_size, key, chosen);
-		if (result == NULL) return -1;
+		if (to_do == enc) 
+			result = encrypt_blocks(data, chunk_size, key, header, chosen);
+		else if (to_do == dec) 
+			result = decrypt_blocks(data, chunk_size, key, header, chosen);
+		if (result == NULL) 
+			return -1;
 
 		//incrementing the number of processed chunks
 		nchunk++;
@@ -185,6 +200,7 @@ int main(int argc, char * argv[])
 		memset(result, 0, num_blocks * BLOCKSIZE);		
 	}
 
+	free(result);
 	free(data);
 	return 0;
 }
