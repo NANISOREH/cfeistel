@@ -12,6 +12,8 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+extern unsigned long chunk_size;
+
 //Schedules the round keys by compressing (or expanding, if smaller) the input key into and 8 byte master key  
 //and then using it to derive one subkey for every round of the Feistel cipher
 void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key, const unsigned char * salt)
@@ -62,8 +64,6 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	unsigned long i=0;
 	unsigned long bcount=0;
 
-	block last_block;
-	snprintf((char *)&last_block, BLOCKSIZE, "%lu", data_len);
 	//scheduling the round keys starting from the master key given
 	schedule_key(round_keys, key, (unsigned char *)&header[0]);	//see the function schedule_key for info
 
@@ -80,16 +80,18 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 1;
 	else if (data_len < BUFSIZE && remainder > 0)		//last block: data size is not multiple of the blocksize, we need two extra blocks
 		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 2;
+
+	chunk_size = data_len;
 	
 	//Reallocating the data pointer as a block pointer with the new size
 	block * b = (block *) realloc(data, bcount * sizeof(block));
 	if (b == NULL) return NULL;
 
-    //Padding shenanigans: they apply only if it's the last chunk of data read.
+    //Padding shenanigans: they apply only if it's the last chunk of data read and we're not using a stream-like cipher.
     //It's a pretty naive padding scheme, but it works on any mode of operation so it simplifies coding.
     //I just 0-pad the last block if data length is not multiple of blocksize and use a size accounting block
     //to know how much of the last block is 0-padding to properly decrypt.
-    if (data_len<BUFSIZE)	
+    if (data_len<BUFSIZE && is_stream_mode(chosen) == false)	
     {	
 	    if (remainder>0)	//forming the last padded block, if there's leftover data
 	    {
@@ -109,6 +111,8 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	    }
 
 	    //appending a final block to store the real(unpadded) size of the encrypted data
+		block last_block;
+		snprintf((char *)&last_block, BLOCKSIZE, "%lu", data_len);
 	    int flag = 0;
 	   	memcpy(&b[bcount-1], &last_block, sizeof(block));
 	   	for (int i=0; i<BLOCKSIZE; i++)
@@ -119,6 +123,9 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	   		if (flag==0 && b[bcount-1].left[i] == '\0')
 	   			flag = 1;
 	   	}
+
+		//We change the chunk size to reflect the fact that we padded a block and added another
+		chunk_size = (BLOCKSIZE * bcount) * sizeof(unsigned char);
 	}
 
     if (chosen == cbc)
@@ -128,7 +135,7 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
     else if (chosen == ctr)
     	return operate_ctr_mode(b, bcount, round_keys, header[1]);
     else if (chosen == ofb)
-    	return operate_ofb_mode(b, bcount, round_keys, header[1]);
+    	return operate_ofb_mode(b, data_len, round_keys, header[1]);
 
     return NULL;
 }
@@ -168,7 +175,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, cha
     else if (chosen == ctr)
     	return operate_ctr_mode((block *)data, bcount, round_keys, header[1]);
     else if (chosen == ofb)
-    	return operate_ofb_mode((block *)data, bcount, round_keys, header[1]);
+    	return operate_ofb_mode((block *)data, data_len, round_keys, header[1]);
 
     return NULL;
 }

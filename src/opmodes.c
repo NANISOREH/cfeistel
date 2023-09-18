@@ -16,7 +16,6 @@
 //These variables belong to the main, but are needed here to keep track of the processing
 extern long unsigned total_file_size;
 extern long unsigned current_block;
-extern long unsigned chunk_size;
 extern int nchunk;
 
 //Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
@@ -28,8 +27,6 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 	free(ciphertext);
 	ciphertext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
-	
-	chunk_size = (BLOCKSIZE * bnum) * sizeof(unsigned char);
 
 	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
 	#pragma omp parallel for
@@ -83,12 +80,10 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 
 	//The ciphertext variable can't be deallocated after use here, because the caller needs it
 	//So, in order to avoid memory leaks, I've made it static and I free its memory before any consequent execution
-	//(I could just reuse the space but I don't know how big the last chunk will be at this point)
+	//(I could just reuse the space but I don't necessarily know how big every chunk will be at this point)
 	free(ciphertext);
 	ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
-
-	chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
 
 	#pragma omp parallel private (counter, counter_block)
 	{
@@ -156,8 +151,6 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 
-	chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
-
 	//Copying the IV to a local variable if we're processing the first block 
 	static block prev_ciphertext;
 	if (nchunk == 0) memcpy(&prev_ciphertext, &iv, BLOCKSIZE);
@@ -203,7 +196,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	
 	//The plaintext variable can't be deallocated after use here, because the caller needs it
 	//So, in order to avoid memory leaks, I've made it static and I free its memory before any consequent execution
-	//(I could just reuse the space but I don't know how big the last chunk will be at this point)
+	//(I could just reuse the space but I don't necessarily know how big every chunk will be at this point)
 	static unsigned char * plaintext;
 	free(plaintext);
 	plaintext = calloc(BLOCKSIZE * bnum, sizeof(unsigned char));
@@ -220,7 +213,6 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	if (nchunk == 0) memcpy(&current_iv, &iv, BLOCKSIZE);
 	
 	memcpy(ciphertext_copy, b, bnum * sizeof(block));
-	chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
 
 	block_logging((unsigned char *)&current_iv, "\n----------CBC(DEC)-------IV-----------", 0);
 
@@ -263,25 +255,35 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 }
 
 //Executes the cipher in OFB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
-unsigned char * operate_ofb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE], block iv)
+unsigned char * operate_ofb_mode(block * b, unsigned long data_len, unsigned char round_keys[NROUND][KEYSIZE], block iv)
 {
 	struct timeval current_time;
 	unsigned char * keystream;
+
+	//The ciphertext variable can't be deallocated after use here, because the caller needs it
+	//So, in order to avoid memory leaks, I've made it static and I free its memory before any consequent execution
+	//(I could just reuse the space but I don't necessarily know how big every chunk will be at this point)
 	static unsigned char * ciphertext;
+	free(ciphertext);
+	ciphertext = malloc(data_len * sizeof(unsigned char));
+	if (ciphertext == NULL) return ciphertext;
+	
 	//Casting the block pointer to a char one because it's comfier for stream-like logic
 	unsigned char * plaintext = (unsigned char*)b;
+	unsigned long bnum;
+	
+	if (data_len % BLOCKSIZE == 0) 
+		bnum = data_len/BLOCKSIZE;
+	else 
+		//if data_len is not a perfect multiple of blocksize we need to count an extra block:
+		//otherwise we wouldn't have the keystream available for the partial block at the end
+	 	bnum = data_len/BLOCKSIZE + 1;
 
 	//Copying the IV block to a local variable only if we're operating on the first chunk
 	static block current_iv;
-	if (nchunk == 0) 
-		memcpy(&current_iv, &iv, BLOCKSIZE);
+	if (nchunk == 0) memcpy(&current_iv, &iv, BLOCKSIZE);
 
-	chunk_size = BLOCKSIZE * bnum * sizeof(unsigned char);
 	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
-
-	free(ciphertext);
-	ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
-	if (ciphertext == NULL) return ciphertext;
 
 	block_logging((unsigned char *)&iv, "\n----------OFB(ENC)------IV-----------", 0);
 
@@ -305,7 +307,7 @@ unsigned char * operate_ofb_mode(block * b, unsigned long bnum, unsigned char ro
 
 	//launching the cycle that will XOR the keystream and the plaintext to produce the ciphertext
 	#pragma omp parallel for
-	for (size_t i = 0; i < bnum * BLOCKSIZE; i++) 
+	for (size_t i = 0; i < data_len; i++) 
 	{
 		ciphertext[i] = keystream[i] ^ plaintext[i];
 		

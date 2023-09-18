@@ -26,7 +26,7 @@ int saved_stdout;
 unsigned long total_file_size=0;
 //This one stores the size of the current chunk of data, and it's set by the function that processed it
 //so that it's always known in the main how much data do write out to file, regardless of wheter there's accounting blocks,
-//prepended IV or anything else that might slightly alter the block count
+//or anything else that might slightly alter the block count
 unsigned long chunk_size=0;
 unsigned long current_block=0; 
 //nchunk will contain the number of chunks that have been processed
@@ -44,7 +44,7 @@ int main(int argc, char * argv[])
 	//This flag will signal a final chunk that's only formed by the accounting block for the previous chunk
 	//(the last one with actual data)
 	bool acc_only_chunk = false;
-	//Array of 2 blocks that will contain IV and key derivation salt 
+	//2 blocks header that will contain IV and key derivation salt 
 	block header[2];
 	FILE * read_file;
 	FILE * write_file;
@@ -118,33 +118,44 @@ int main(int argc, char * argv[])
 		
 		//If we read exactly BLOCKSIZE bytes, then the current chunk only contains the accounting block for the previous one
 		//This only occurs when the actual data size falls within BLOCKSIZE bytes of a BUFSIZE multiple
-		if (nchunk > 0 && chunk_size == BLOCKSIZE) acc_only_chunk = true;
+		//This does not apply to stream-like modes like OFB, because those need no padding and no accounting.
+		if (nchunk > 0 && chunk_size == BLOCKSIZE && is_stream_mode(chosen) == false) acc_only_chunk = true;
 
 		if (chunk_size < 0) //reading error
 		{
 			exit_message(1, "Input file not readable!");
 			return -1;
 		}
-		else if (chunk_size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
-		else if (check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
+		else if 
+			(chunk_size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
+		else if 
+			(check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
 
 		//starting the correct operation and returning -1 in case there's an error
 		if (to_do == enc) 
 			result = encrypt_blocks(data, chunk_size, key, header, chosen);
 		else if (to_do == dec) 
 			result = decrypt_blocks(data, chunk_size, key, header, chosen);
-		if (result == NULL) 
+		
+		if (result == NULL)
+		{
+			fclose(write_file);
+			fclose(read_file);
+			free(data);
 			return -1;
+		}
 
 		//incrementing the number of processed chunks
 		nchunk++;
+
 		//padding has not been applied yet in encryption or removed in decryption
 		//so BLOCKSIZE should be a perfect divisor of chunk_size
 		num_blocks = chunk_size/BLOCKSIZE;
 
 		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
 		//and if there's no size written in the last block, it means that the specified decryption key was invalid.
-		if (to_do == dec && final_chunk_flag == 1) 
+		//This does not apply to stream-like modes like OFB, because those need no padding and no accounting.
+		if (to_do == dec && final_chunk_flag == 1 && is_stream_mode(chosen) == false) 
 		{ 
 			//Removing padding from this chunk
 			chunk_size = remove_padding(result, num_blocks, chosen, total_file_size);
@@ -154,13 +165,9 @@ int main(int argc, char * argv[])
 			//In the same way, if chunk_size was set to -1 by remove_padding it means there was no accounting block, and that means
 			//that the input file's size was a perfect multiple of BUFSIZE
 			if (chunk_size == 0 || chunk_size == -1) chunk_size = BUFSIZE;
+		}
 
-			fwrite(result, chunk_size, 1, write_file); 
-		}
-		else //in any other case we're using the number of blocks calculated before to determine how much text to write
-		{
-			fwrite(result,num_blocks * BLOCKSIZE, 1, write_file);
-		}
+		fwrite(result, chunk_size, 1, write_file); 
 
 		if (final_chunk_flag == 1) //it was the last chunk of data, we're done, closing files and printing some stats
 		{
@@ -180,6 +187,7 @@ int main(int argc, char * argv[])
 				remove(infile);
 				rename(outfile, infile);
 			}			
+			
 			struct timeval current_time;
 			gettimeofday(&current_time, NULL);
 			char speed[100];

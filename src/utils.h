@@ -20,3 +20,4 @@ void block_xor(block *result, const block *first, const block *second);
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, enum mode chosen, unsigned long total_file_size);
 int check_end_file(FILE *stream);
 int prepend_block(block * b, unsigned char * data);
+bool is_stream_mode(enum mode chosen);

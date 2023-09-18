@@ -310,3 +310,26 @@ int prepend_block(block * b, unsigned char * data)
 
 	return 0;
 }
+
+//Returns true if the chosen mode has to be treated like a stream cipher
+//(no padding and no accounting block), false otherwise
+bool is_stream_mode(enum mode chosen)
+{
+	 switch (chosen) {
+        case cbc:
+            return false;
+            break;
+        case ecb:
+            return false;;
+            break;
+        case ctr:
+            return true;
+            break;
+        case ofb:
+            return true;
+            break;
+        default:
+            return false;
+            break;
+    }
+}
