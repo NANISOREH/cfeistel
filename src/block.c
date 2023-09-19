@@ -128,13 +128,13 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long * chunk_size,
 	}
 
     if (chosen == cbc)
-    	return encrypt_cbc_mode(b, bcount, round_keys, header[1], nchunk);
+    	return encrypt_cbc_mode(b, bcount, round_keys, header[1]);
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode(b, bcount, round_keys, header[1], nchunk);
+    	return operate_ctr_mode(b, bcount, round_keys, header[1]);
     else if (chosen == ofb)
-    	return operate_ofb_mode(b, *chunk_size, round_keys, header[1], nchunk);
+    	return operate_ofb_mode(b, *chunk_size, round_keys, header[1]);
 
     return NULL;
 }
@@ -169,13 +169,13 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, int
 	//No need to reallocate: after decryption plaintext will never be greater than the ciphertext was:
 	//it should be okay to just paass the address of the raw input data 
     if (chosen == cbc)
-    	return decrypt_cbc_mode((block *)data, bcount, round_keys, header[1], nchunk);
+    	return decrypt_cbc_mode((block *)data, bcount, round_keys, header[1]);
     else if (chosen == ecb)
     	return operate_ecb_mode((block *)data, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode((block *)data, bcount, round_keys, header[1], nchunk);
+    	return operate_ctr_mode((block *)data, bcount, round_keys, header[1]);
     else if (chosen == ofb)
-    	return operate_ofb_mode((block *)data, data_len, round_keys, header[1], nchunk);
+    	return operate_ofb_mode((block *)data, data_len, round_keys, header[1]);
 
     return NULL;
 }

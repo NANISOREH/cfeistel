@@ -16,7 +16,7 @@
 unsigned long total_file_size=0;
 struct timeval start_time;
 
-int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode chosen, enum operation to_do, enum outmode output_mode) ;
+int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode * chosen, enum operation * to_do, enum outmode * output_mode);
 
 int main(int argc, char * argv[]) 
 {
@@ -53,7 +53,7 @@ int main(int argc, char * argv[])
 		omp_set_num_threads(1);
 	#endif	
 
-	if (command_selection(argc, argv, key, infile, outfile, chosen, to_do, output_mode) == -1) return -1;
+	if (command_selection(argc, argv, key, infile, outfile, &chosen, &to_do, &output_mode) == -1) return -1;
 
 	//Key not received in input, we'll use "secretkey" as key
 	if (key == NULL)
@@ -212,7 +212,7 @@ int main(int argc, char * argv[])
 	return 0;
 }
 
-int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode chosen, enum operation to_do, enum outmode output_mode) 
+int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode * chosen, enum operation * to_do, enum outmode * output_mode)
 {
     int opt;
 
@@ -239,17 +239,17 @@ int command_selection(int argc, char *argv[], char * key, char * infile, char * 
                 break;
             case 'o':
                 outfile = optarg;
-                output_mode = specified;
+                *output_mode = specified;
                 break;
             case 'm':
                 if (strcmp(optarg, "ecb") == 0)
-                    chosen = ecb;
+                    *chosen = ecb;
                 else if (strcmp(optarg, "cbc") == 0)
-                    chosen = cbc;
+                    *chosen = cbc;
                 else if (strcmp(optarg, "ctr") == 0)
-                    chosen = ctr;
+                    *chosen = ctr;
 				else if (strcmp(optarg, "ofb") == 0)
-                    chosen = ofb;
+                    *chosen = ofb;
                 else 
 				{
                     fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
@@ -267,10 +267,11 @@ int command_selection(int argc, char *argv[], char * key, char * infile, char * 
     if (optind < argc) 
 	{
         if (strcmp(argv[optind], "enc") == 0)
-            to_do = enc;
+            *to_do = enc;
         else if (strcmp(argv[optind], "dec") == 0)
-            to_do = dec;
-        else {
+            *to_do = dec;
+        else 
+		{
             fprintf(stderr, "Invalid operation: %s\n", argv[optind]);
             return -1;
         }

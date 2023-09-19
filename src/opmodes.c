@@ -59,26 +59,26 @@ unsigned char * operate_ecb_mode(block * b, const unsigned long bnum, const unsi
 }
 
 //Executes the cipher in CTR mode; 
-//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
-unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
 
 	static unsigned char * ciphertext;
 	block counter_block;
-	unsigned long initial_counter = 0;
+	static unsigned long * initial_counter = NULL;
 	long unsigned counter = 0;
 	//This static variable will contain the last counter value for the previous processed chunk
 	static unsigned long next_initial_counter;
 
-	if (nchunk==0) //Initializing the counter and the IV when it's the first processed chunk
+	if (initial_counter == NULL) //Initializing the counter and the IV when it's the first processed chunk
 	{
-		initial_counter = derive_number_from_block(&iv);
+		*initial_counter = derive_number_from_block(&iv);
 	}
 	else //not the first chunk of data, IV has already been used in a previous execution
 	{
-		initial_counter = next_initial_counter;
+		*initial_counter = next_initial_counter;
 	}
 
 	//The ciphertext variable can't be deallocated after use here, because the caller needs it
@@ -90,12 +90,12 @@ unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsi
 
 	#pragma omp parallel private (counter, counter_block)
 	{
-		counter = initial_counter;		
+		counter = *initial_counter;		
 		//launching the feistel algorithm on every block
 		#pragma omp for schedule(static, 1)
 		for (unsigned long i=0; i<bnum; i++)
 		{
-			counter=initial_counter + i;
+			counter = *initial_counter + i;
 
 			//initializing the counter block for this iteration 
 			derive_block_from_number(counter, &counter_block);
@@ -140,13 +140,13 @@ unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsi
 	//the value would be set by the thread handling the last iteration numerically, not chronologically
 	//and that means some threads might occasionally still be "left behind" processing earlier iterations
 	//with an incorrect value of initial_counter
-	initial_counter = next_initial_counter;
+	*initial_counter = next_initial_counter;
 	return ciphertext;
 }
 
 //Executes encryption in CBC mode; 
-//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
-unsigned char * encrypt_cbc_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+unsigned char * encrypt_cbc_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -156,9 +156,14 @@ unsigned char * encrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 	ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 
-	//Copying the IV to a local variable if we're processing the first block 
-	static block prev_ciphertext;
-	if (nchunk == 0) memcpy(&prev_ciphertext, &iv, BLOCKSIZE);
+	//Copying the IV block to a local variable only if we're operating on the first chunk
+	//In later chunks, current_iv will hold the last keystream block of the previous chunk 
+	static block * prev_ciphertext = NULL;
+	if (prev_ciphertext == NULL)
+	{
+		prev_ciphertext = malloc(BLOCKSIZE);
+		memcpy(prev_ciphertext, &iv, BLOCKSIZE);
+	}	
 
 	block_logging((unsigned char *)&prev_ciphertext, "\n----------CBC(ENC)-------IV-----------", 0);
 
@@ -175,11 +180,11 @@ unsigned char * encrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 		block_logging((unsigned char *)&b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
 
 		//XORing the current block x with the ciphertext of the block x-1
-		block_xor(&b[i], &b[i], &prev_ciphertext);
+		block_xor(&b[i], &b[i], prev_ciphertext);
 		
 		//executing the encryption on block x and saving the result in prev_ciphertext; it will be used in the next iteration
 		process_block((unsigned char *)&b[i], b[i].left, b[i].right, round_keys);
-		memcpy(&prev_ciphertext, &b[i], sizeof(block));
+		memcpy(prev_ciphertext, &b[i], sizeof(block));
 
 		//logging (post-encryption)
 		block_logging((unsigned char *)&b[i], "\n----------CBC(ENC)-------AFTER-----------", i);
@@ -195,8 +200,8 @@ unsigned char * encrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 }
 
 //Executes decryption in CBC mode; 
-//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
-unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -215,9 +220,14 @@ unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 	block * ciphertext_copy;
 	ciphertext_copy = malloc(bnum * sizeof(block));
 	
-	//Copying the IV to the local variable if we're processing the first block 
-	static block current_iv;
-	if (nchunk == 0) memcpy(&current_iv, &iv, BLOCKSIZE);
+	//Copying the IV block to a local variable only if we're operating on the first chunk
+	//In later chunks, current_iv will hold the last keystream block of the previous chunk 
+	static block * current_iv = NULL;
+	if (current_iv == NULL)
+	{
+		current_iv = malloc(BLOCKSIZE);
+		memcpy(current_iv, &iv, BLOCKSIZE);
+	}	
 	
 	memcpy(ciphertext_copy, b, bnum * sizeof(block));
 
@@ -241,7 +251,7 @@ unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 		process_block((unsigned char *)&b[i], b[i].left, b[i].right, round_keys);
 
 		if (i == 0) //...if it's the first block, you xor it with the IV...
-			block_xor(&b[i], &b[i], &current_iv); 
+			block_xor(&b[i], &b[i], current_iv); 
 		else	//...whereas for every other ciphered block x, you xor it with ciphertext[x-1]
 			block_xor(&b[i], &b[i], &ciphertext_copy[(i)-1]); 			
 
@@ -254,7 +264,7 @@ unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 	}
 
 	//The IV for the next chunk will be the ciphertext of the last decrypted block
-	memcpy(&current_iv, &ciphertext_copy[(bnum)-1], sizeof(block));
+	memcpy(current_iv, &ciphertext_copy[(bnum)-1], sizeof(block));
 
 	free(ciphertext_copy);
 
@@ -262,8 +272,8 @@ unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsi
 }
 
 //Executes the cipher in OFB mode; 
-//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
-unsigned char * operate_ofb_mode (const block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
+//takes a block array, the total size of the chunk, an IV and the round keys, returns processed data.
+unsigned char * operate_ofb_mode (const block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -290,8 +300,13 @@ unsigned char * operate_ofb_mode (const block * b, const unsigned long data_len,
 	 	bnum = data_len/BLOCKSIZE + 1;
 
 	//Copying the IV block to a local variable only if we're operating on the first chunk
-	static block current_iv;
-	if (nchunk == 0) memcpy(&current_iv, &iv, BLOCKSIZE);
+	//In later chunks, current_iv will hold the last keystream block of the previous chunk 
+	static block * current_iv = NULL;
+	if (current_iv == NULL)
+	{
+		current_iv = malloc(BLOCKSIZE);
+		memcpy(current_iv, &iv, BLOCKSIZE);
+	}	
 
 	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 
@@ -310,7 +325,7 @@ unsigned char * operate_ofb_mode (const block * b, const unsigned long data_len,
 		
 		//executing the encryption on the last processed keystream block
 		if (i==0) 
-			process_block(&keystream[i*BLOCKSIZE], current_iv.left, current_iv.right, round_keys);
+			process_block(&keystream[i*BLOCKSIZE], current_iv->left, current_iv->right, round_keys);
 		else 
 			process_block(&keystream[i*BLOCKSIZE], &keystream[(i-1)*BLOCKSIZE], &keystream[((i-1)*BLOCKSIZE) + BLOCKSIZE/2], round_keys);
 	}
@@ -338,7 +353,7 @@ unsigned char * operate_ofb_mode (const block * b, const unsigned long data_len,
     }
 
 	//The iv block for the next chunk will be the last block of the keystream
-	memcpy(&current_iv, &keystream[(bnum - 1) * BLOCKSIZE], sizeof(block));
+	memcpy(current_iv, &keystream[(bnum - 1) * BLOCKSIZE], sizeof(block));
 	free(keystream);
 
 	return ciphertext;
