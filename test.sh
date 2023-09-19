@@ -16,13 +16,13 @@ suite_sizes=(16 1024 1234 52341 954321 8463014 104857592 104857600 104857608 154
 # Converts megabytes to bytes
 convert_to_bytes() {
     local mb="$1"
-    echo "$((mb * 1024 * 1024))"
+    echo "$((mb * 1000 * 1000))"
 }
 
 # Converts bytes to megabytes
 convert_to_mb() {
     local bytes="$1"
-    echo "$((bytes / 1024 / 1024)) MB"
+    echo "$((bytes / 1000 / 1000)) MB"
 }
 
 launch_test_suite() {
@@ -217,11 +217,11 @@ while [ "$#" -gt 0 ]; do
             shift
             ;;
         -t|--text)
-            # Check if the file size is less than 1MB (in megabytes) or 1048576 bytes
+            # Check if the file size is less than 1MB
             if [ "$unit_flag" == "MB" ] && [ "$file_size" -gt 1 ]; then
                 echo "Error: Text mode is only supported for files smaller than 1MB."
                 exit unction to check1
-            elif [ "$unit_flag" != "MB" ] && [ "$file_size" -gt 1048576 ]; then
+            elif [ "$unit_flag" != "MB" ] && [ "$file_size" -gt 1000000 ]; then
                 echo "Error: Text mode is only supported for files smaller than 1MB."
                 exit 1
             fi
@@ -233,11 +233,11 @@ while [ "$#" -gt 0 ]; do
                 echo "Error: -d and -dp are mutually exclusive."
                 exit 1
             fi
-            # Check if the file size is less than 1MB (in megabytes) or 1048576 bytes
+            # Check if the file size is less than 1MB
             if [ "$unit_flag" == "MB" ] && [ "$file_size" -gt 1 ]; then
                 echo "Error: Debug mode is only supported for files smaller than 1MB."
                 exit 1
-            elif [ "$unit_flag" != "MB" ] && [ "$file_size" -gt 1048576 ]; then
+            elif [ "$unit_flag" != "MB" ] && [ "$file_size" -gt 1000000 ]; then
                 echo "Error: Debug mode is only supported for files smaller than 1MB."
                 exit 1
             fi

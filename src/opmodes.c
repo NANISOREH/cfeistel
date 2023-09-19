@@ -15,13 +15,13 @@
 
 //These variables belong to the main, but are needed here to keep track of the processing
 extern long unsigned total_file_size;
-extern long unsigned current_block;
-extern int nchunk;
+extern struct timeval start_time;
 
 //Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
-unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE])
+unsigned char * operate_ecb_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE])
 {
 	struct timeval current_time;
+	static int current_block = 0;
 	
 	static unsigned char * ciphertext;
 	free(ciphertext);
@@ -37,7 +37,7 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
-			show_progress_data(current_time);
+			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
 		#pragma omp critical
 		block_logging((unsigned char *)&b[i], "\n----------ECB-------BEFORE-----------", i);
@@ -58,11 +58,14 @@ unsigned char * operate_ecb_mode(block * b, unsigned long bnum, unsigned char ro
 	return ciphertext;
 }
 
-//Executes the cipher in CTR mode; takes a block array, the total number of blocks and the round keys, returns processed data.
-unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE], block iv)
+//Executes the cipher in CTR mode; 
+//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
+unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
 {
-	static unsigned char * ciphertext;
 	struct timeval current_time;
+	static int current_block = 0;
+
+	static unsigned char * ciphertext;
 	block counter_block;
 	unsigned long initial_counter = 0;
 	long unsigned counter = 0;
@@ -105,7 +108,7 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 			if (i % 10000 == 0)
 			{
 				gettimeofday(&current_time, NULL);
-				show_progress_data(current_time);
+				show_progress_data(current_time, start_time, total_file_size, current_block);
 			}
 
 			#pragma omp critical
@@ -141,12 +144,14 @@ unsigned char * operate_ctr_mode(block * b, unsigned long bnum, unsigned char ro
 	return ciphertext;
 }
 
-//Executes encryption in CBC mode; takes a block array, the total number of blocks and the round keys, returns processed data.
-unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE], block iv)
+//Executes encryption in CBC mode; 
+//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
+unsigned char * encrypt_cbc_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
 {
 	struct timeval current_time;
-	static unsigned char * ciphertext;
+	static int current_block = 0;
 
+	static unsigned char * ciphertext;
 	free(ciphertext);
 	ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
@@ -165,7 +170,7 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
-			show_progress_data(current_time);
+			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
 		block_logging((unsigned char *)&b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
 
@@ -189,10 +194,12 @@ unsigned char * encrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	return ciphertext;
 }
 
-//Executes decryption in CBC mode; takes a block array, the total number of blocks and the round keys, returns processed data.
-unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char round_keys[NROUND][KEYSIZE], block iv)
+//Executes decryption in CBC mode; 
+//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
+unsigned char * decrypt_cbc_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
 {
 	struct timeval current_time;
+	static int current_block = 0;
 	
 	//The plaintext variable can't be deallocated after use here, because the caller needs it
 	//So, in order to avoid memory leaks, I've made it static and I free its memory before any consequent execution
@@ -227,7 +234,7 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
-			show_progress_data(current_time);
+			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
 
 		//First thing, you run feistel on the block,...
@@ -254,10 +261,13 @@ unsigned char * decrypt_cbc_mode(block * b, unsigned long bnum, unsigned char ro
 	return plaintext;
 }
 
-//Executes the cipher in OFB mode; takes a block array, the total number of blocks and the round keys, returns processed data.
-unsigned char * operate_ofb_mode(block * b, unsigned long data_len, unsigned char round_keys[NROUND][KEYSIZE], block iv)
+//Executes the cipher in OFB mode; 
+//takes a block array, the total number of blocks, the current chunk number, an IV and the round keys, returns processed data.
+unsigned char * operate_ofb_mode (const block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv, const int nchunk)
 {
 	struct timeval current_time;
+	static int current_block = 0;
+
 	unsigned char * keystream;
 
 	//The ciphertext variable can't be deallocated after use here, because the caller needs it
@@ -295,7 +305,7 @@ unsigned char * operate_ofb_mode(block * b, unsigned long data_len, unsigned cha
 		if (i % 10000 == 0)
 		{
 			gettimeofday(&current_time, NULL);
-			show_progress_data(current_time);
+			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
 		
 		//executing the encryption on the last processed keystream block

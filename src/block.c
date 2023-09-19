@@ -11,8 +11,7 @@
 #include "omp.h"
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
-
-extern unsigned long chunk_size;
+#include <openssl/obj_mac.h>
 
 //Schedules the round keys by compressing (or expanding, if smaller) the input key into and 8 byte master key  
 //and then using it to derive one subkey for every round of the Feistel cipher
@@ -55,9 +54,11 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key, c
 	free(master_key);
 }
 
-//Receives and organizes input data, starts execution of the cipher in encryption mode. 
-//Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
-unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, char * key, block header[2], enum mode chosen)
+//Receives and organizes input data, takes the length of the chunk (as a pointer), the number of the current chunk, the input key,
+//the header block array and the chosen operation mode enum value. 
+//Returns the result of the encryption as a pointer to unsigned char, or NULL if an error is encountered.
+//In case it has to add padding and/or an accounting block, it uses the chunk_size pointer to update the chunk size
+unsigned char * encrypt_blocks(unsigned char * data, unsigned long * chunk_size, int nchunk, const char * key, const block header[2], enum mode chosen)
 {	
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -69,19 +70,17 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 
    	//if the size of the last chunk is not multiple of the block size,
 	//remainder will be the number of leftover bytes that will go into the padded block
-	unsigned int remainder = data_len % BLOCKSIZE;
+	unsigned int remainder = *chunk_size % BLOCKSIZE;
 
 	//Figuring how much space we need for the blocks.
 	//We only need extra blocks if we're at the last chunk of input data, because only in that case we have to append the data size and eventually add padding.
 	//We understand that it's the last chunk when there's less data than the input buffer can contain.
-	if (data_len == BUFSIZE)	//full buffer worth of data means it's not the last chunk of data, so we won't need to add extra blocks
-		bcount = (data_len * sizeof(char)) / BLOCKSIZE;	
-	else if (data_len < BUFSIZE && remainder == 0)		//last block: data size is multiple of the blocksize, we need an extra block
-		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 1;
-	else if (data_len < BUFSIZE && remainder > 0)		//last block: data size is not multiple of the blocksize, we need two extra blocks
-		bcount = ((data_len * sizeof(char)) / BLOCKSIZE) + 2;
-
-	chunk_size = data_len;
+	if (*chunk_size == BUFSIZE)	//full buffer worth of data means it's not the last chunk of data, so we won't need to add extra blocks
+		bcount = (*chunk_size * sizeof(char)) / BLOCKSIZE;	
+	else if (*chunk_size < BUFSIZE && remainder == 0)		//last block: data size is multiple of the blocksize, we need an extra block
+		bcount = ((*chunk_size * sizeof(char)) / BLOCKSIZE) + 1;
+	else if (*chunk_size < BUFSIZE && remainder > 0)		//last block: data size is not multiple of the blocksize, we need two extra blocks
+		bcount = ((*chunk_size * sizeof(char)) / BLOCKSIZE) + 2;
 	
 	//Reallocating the data pointer as a block pointer with the new size
 	block * b = (block *) realloc(data, bcount * sizeof(block));
@@ -91,7 +90,7 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
     //It's a pretty naive padding scheme, but it works on any mode of operation so it simplifies coding.
     //I just 0-pad the last block if data length is not multiple of blocksize and use a size accounting block
     //to know how much of the last block is 0-padding to properly decrypt.
-    if (data_len<BUFSIZE && is_stream_mode(chosen) == false)	
+    if (*chunk_size<BUFSIZE && is_stream_mode(chosen) == false)	
     {	
 	    if (remainder>0)	//forming the last padded block, if there's leftover data
 	    {
@@ -112,7 +111,7 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 
 	    //appending a final block to store the real(unpadded) size of the encrypted data
 		block last_block;
-		snprintf((char *)&last_block, BLOCKSIZE, "%lu", data_len);
+		snprintf((char *)&last_block, BLOCKSIZE, "%lu", *chunk_size);
 	    int flag = 0;
 	   	memcpy(&b[bcount-1], &last_block, sizeof(block));
 	   	for (int i=0; i<BLOCKSIZE; i++)
@@ -125,24 +124,25 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	   	}
 
 		//We change the chunk size to reflect the fact that we padded a block and added another
-		chunk_size = (BLOCKSIZE * bcount) * sizeof(unsigned char);
+		*chunk_size = (BLOCKSIZE * bcount) * sizeof(unsigned char);
 	}
 
     if (chosen == cbc)
-    	return encrypt_cbc_mode(b, bcount, round_keys, header[1]);
+    	return encrypt_cbc_mode(b, bcount, round_keys, header[1], nchunk);
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode(b, bcount, round_keys, header[1]);
+    	return operate_ctr_mode(b, bcount, round_keys, header[1], nchunk);
     else if (chosen == ofb)
-    	return operate_ofb_mode(b, data_len, round_keys, header[1]);
+    	return operate_ofb_mode(b, *chunk_size, round_keys, header[1], nchunk);
 
     return NULL;
 }
 
-//Receives and organizes input data, starts execution of the cipher in decryption mode. 
-//Returns the result as a pointer to unsigned char, or NULL if an error is encountered.
-unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, char * key, block header[2], enum mode chosen)
+//Receives and organizes input data, takes the length of the chunk, the number of the current chunk, the input key,
+//the header block array and the chosen operation mode enum value. 
+//Returns the result of the decryption as a pointer to unsigned char, or NULL if an error is encountered.
+unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, int nchunk, const char * key, const block header[2], enum mode chosen)
 {
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -169,13 +169,13 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, cha
 	//No need to reallocate: after decryption plaintext will never be greater than the ciphertext was:
 	//it should be okay to just paass the address of the raw input data 
     if (chosen == cbc)
-    	return decrypt_cbc_mode((block *)data, bcount, round_keys, header[1]);
+    	return decrypt_cbc_mode((block *)data, bcount, round_keys, header[1], nchunk);
     else if (chosen == ecb)
     	return operate_ecb_mode((block *)data, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode((block *)data, bcount, round_keys, header[1]);
+    	return operate_ctr_mode((block *)data, bcount, round_keys, header[1], nchunk);
     else if (chosen == ofb)
-    	return operate_ofb_mode((block *)data, data_len, round_keys, header[1]);
+    	return operate_ofb_mode((block *)data, data_len, round_keys, header[1], nchunk);
 
     return NULL;
 }

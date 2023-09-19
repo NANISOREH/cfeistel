@@ -13,48 +13,47 @@
 #include "getopt.h"
 #include <bits/getopt_core.h>
 
-enum mode chosen = DEFAULT_MODE;
-enum operation to_do = DEFAULT_OP;
-enum outmode output_mode = DEFAULT_OUT;
-char * infile = "in";
-char * outfile = "out";
-char * key = NULL;
-int saved_stdout;
-
-//This variable stores the currently processing block relative to the whole file
-//and not just relative the chunk that's currently in the buffer 
 unsigned long total_file_size=0;
-//This one stores the size of the current chunk of data, and it's set by the function that processed it
-//so that it's always known in the main how much data do write out to file, regardless of wheter there's accounting blocks,
-//or anything else that might slightly alter the block count
-unsigned long chunk_size=0;
-unsigned long current_block=0; 
-//nchunk will contain the number of chunks that have been processed
-int nchunk=0;
 struct timeval start_time;
 
-int command_selection(int argc, char * argv[]);
+int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode chosen, enum operation to_do, enum outmode output_mode) ;
 
 int main(int argc, char * argv[]) 
 {
+	//Variables that will be populated by user command selection
+	enum mode chosen = DEFAULT_MODE;
+	enum operation to_do = DEFAULT_OP;
+	enum outmode output_mode = DEFAULT_OUT;
+	char * infile = "in";
+	char * outfile = "out";
+	char * key = NULL;
+
 	unsigned char * data;
 	unsigned int final_chunk_flag = 0;
 	unsigned char * result;
 	unsigned long num_blocks;
+	//nchunk will contain the number of chunks that have currently been processed
+	int nchunk=0;
+	//chunk_size stores the size of the current chunk of data, and it's set by the function that processed it
+	//so that it's always known in the main how much data do write out to file, regardless of wheter there's accounting blocks,
+	//or anything else that might slightly alter the block count
+	unsigned long chunk_size=0;
 	//This flag will signal a final chunk that's only formed by the accounting block for the previous chunk
 	//(the last one with actual data)
 	bool acc_only_chunk = false;
 	//2 blocks header that will contain IV and key derivation salt 
 	block header[2];
+	
 	FILE * read_file;
 	FILE * write_file;
+	int saved_stdout;
 	saved_stdout = dup(1);
 
 	#ifdef SEQ
 		omp_set_num_threads(1);
 	#endif	
 
-	if (command_selection(argc, argv) == -1) return -1;
+	if (command_selection(argc, argv, key, infile, outfile, chosen, to_do, output_mode) == -1) return -1;
 
 	//Key not received in input, we'll use "secretkey" as key
 	if (key == NULL)
@@ -133,9 +132,9 @@ int main(int argc, char * argv[])
 
 		//starting the correct operation and returning -1 in case there's an error
 		if (to_do == enc) 
-			result = encrypt_blocks(data, chunk_size, key, header, chosen);
+			result = encrypt_blocks(data, &chunk_size, nchunk, key, header, chosen);
 		else if (to_do == dec) 
-			result = decrypt_blocks(data, chunk_size, key, header, chosen);
+			result = decrypt_blocks(data, chunk_size, nchunk, key, header, chosen);
 		
 		if (result == NULL)
 		{
@@ -148,15 +147,15 @@ int main(int argc, char * argv[])
 		//incrementing the number of processed chunks
 		nchunk++;
 
-		//padding has not been applied yet in encryption or removed in decryption
-		//so BLOCKSIZE should be a perfect divisor of chunk_size
-		num_blocks = chunk_size/BLOCKSIZE;
-
 		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
 		//and if there's no size written in the last block, it means that the specified decryption key was invalid.
 		//This does not apply to stream-like modes like OFB, because those need no padding and no accounting.
-		if (to_do == dec && final_chunk_flag == 1 && is_stream_mode(chosen) == false) 
+		if (to_do == dec && final_chunk_flag == 1 && is_stream_mode(chosen) == false)
 		{ 
+			//padding has not been applied yet in encryption or removed in decryption
+			//so BLOCKSIZE should be a perfect divisor of chunk_size
+			num_blocks = chunk_size/BLOCKSIZE;
+
 			//Removing padding from this chunk
 			chunk_size = remove_padding(result, num_blocks, chosen, total_file_size);
 
@@ -194,9 +193,9 @@ int main(int argc, char * argv[])
 			char time[100];
 			char filesize[100];
 			double time_diff = timeval_diff_seconds(start_time, current_time);
-			snprintf(speed, sizeof(speed), "Avg processing speed: %.2f MB/s", estimate_speed(current_time));
+			snprintf(speed, sizeof(speed), "Avg processing speed: %.2f MB/s", estimate_speed(current_time, start_time, total_file_size/BLOCKSIZE));
 			snprintf(time, sizeof(time), "Time elapsed: %.2f s", time_diff);
-			snprintf(filesize, sizeof(filesize), "\nTotal file size: %.2f MB", (float)total_file_size / (1024.0 * 1024.0));
+			snprintf(filesize, sizeof(filesize), "\nTotal file size: %.2f MB", (float)total_file_size / (1000.0 * 1000.0));
 			if (to_do == enc) exit_message(4, "Encryption complete!\n", filesize, speed, time);
 			else exit_message(4, "Decryption complete!\n", filesize, speed, time);
 
@@ -213,7 +212,7 @@ int main(int argc, char * argv[])
 	return 0;
 }
 
-int command_selection(int argc, char *argv[]) 
+int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode chosen, enum operation to_do, enum outmode output_mode) 
 {
     int opt;
 

@@ -17,7 +17,4 @@ typedef struct block {
 }block;
 
 extern long unsigned total_file_size;
-extern long unsigned current_block;
-extern long unsigned chunk_size;
 extern struct timeval start_time;
-extern int nchunk;

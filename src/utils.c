@@ -16,11 +16,6 @@
 #define CRC_POLYNOMIAL 0xEDB88320UL
 #define CRC_INITIAL_VALUE 0xFFFFFFFFUL
 
-//These variables belong to the main but are needed here to print progress info
-extern long unsigned total_file_size;
-extern long unsigned current_block;
-extern struct timeval start_time;
-
 //Does bitwise xor between two block halves
 int half_block_xor(unsigned char * result, const unsigned char * first, const unsigned char * second)
 {
@@ -148,7 +143,7 @@ int check_end_file(FILE *stream)
 }
 
 //Prints progress information
-void show_progress_data(struct timeval current_time)
+void show_progress_data(const struct timeval current_time, const struct timeval start_time, const unsigned long total_file_size, const unsigned long current_block)
 {
 	#ifdef QUIET
     	return;
@@ -157,14 +152,14 @@ void show_progress_data(struct timeval current_time)
 	unsigned long bnum = total_file_size / BLOCKSIZE;
 	int percentage = (100 * current_block)/bnum;
 
-	printf("\rProgress: %d%%\t Avg speed: %.2f MB/s", percentage, estimate_speed(current_time));
+	printf("\rProgress: %d%%\t Avg speed: %.2f MB/s", percentage, estimate_speed(current_time, start_time, current_block));
 	fflush(stdout);
 }
 
 //Estimates the processing speed at a given point in time
-double estimate_speed (struct timeval current_time)
+double estimate_speed (const struct timeval current_time, const struct timeval start_time, const unsigned long current_block)
 {
-	double processed_data = (double) (current_block * BLOCKSIZE)/(1024*1024);
+	double processed_data = (double) (current_block * BLOCKSIZE)/(1000*1000);
 	double elapsed_time = (current_time.tv_sec - start_time.tv_sec) + (current_time.tv_usec - start_time.tv_usec) / 1000000.0;
 	return processed_data/elapsed_time;
 }
@@ -272,7 +267,7 @@ long unsigned create_nonce(block * nonce)
 }
 
 //Derives an unsigned long from the content of a block 
-long unsigned derive_number_from_block(block * b)
+long unsigned derive_number_from_block(const block * b)
 {
 	long unsigned num = 0;
 

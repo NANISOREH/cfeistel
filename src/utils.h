@@ -4,11 +4,11 @@ void block_logging(unsigned char * b, const char* message, unsigned long bcount)
 double timeval_diff_seconds(struct timeval start, struct timeval end);
 long unsigned compute_checksum(const unsigned char *data, const long unsigned size);
 void exit_message(int num_strings, ...);
-void show_progress_data(struct timeval current_time);
-double estimate_speed (struct timeval current_time);
+void show_progress_data(const struct timeval current_time, const struct timeval start_time, const unsigned long total_file_size, const unsigned long current_block);
+double estimate_speed (const struct timeval current_time, const struct timeval start_time, const unsigned long current_block);
 void str_safe_print(unsigned char * to_print, unsigned long size);
 //Maths utils
-long unsigned derive_number_from_block(block * b);
+long unsigned derive_number_from_block(const block * b);
 void derive_block_from_number(long unsigned num, block *b);
 int half_block_xor(unsigned char * result, const unsigned char * first, const unsigned char * second);
 void split_byte(unsigned char * left_part, unsigned char * right_part, unsigned char whole);
