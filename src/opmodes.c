@@ -59,35 +59,47 @@ unsigned char * operate_ecb_mode(block * b, const unsigned long bnum, const unsi
 }
 
 //Executes the cipher in CTR mode; 
-//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
-unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+//takes a block array, the length of the chunk, an IV and the round keys, returns processed data.
+unsigned char * operate_ctr_mode(block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
 
-	static unsigned char * ciphertext;
 	block counter_block;
+	//Casting the block pointer to a char one because it's comfier for stream-like logic
+	unsigned char * plaintext = (unsigned char*)b;
+
 	static unsigned long * initial_counter = NULL;
 	long unsigned counter = 0;
 	//This static variable will contain the last counter value for the previous processed chunk
-	static unsigned long next_initial_counter;
+	unsigned long next_initial_counter;
 
-	if (initial_counter == NULL) //Initializing the counter and the IV when it's the first processed chunk
+	if (initial_counter == NULL) //Initializing the counter with the IV when it's the first processed chunk
 	{
+		initial_counter = malloc(sizeof(unsigned long));
 		*initial_counter = derive_number_from_block(&iv);
 	}
-	else //not the first chunk of data, IV has already been used in a previous execution
-	{
-		*initial_counter = next_initial_counter;
-	}
+
+	int bnum = 0;
+	if (data_len % BLOCKSIZE == 0) 
+		bnum = data_len/BLOCKSIZE;
+	else 
+		//if data_len is not a perfect multiple of blocksize we need to count an extra block:
+		//otherwise we wouldn't have the keystream available for the partial block at the end
+	 	bnum = data_len/BLOCKSIZE + 1;
+
+	unsigned char * keystream;
+	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
 
 	//The ciphertext variable can't be deallocated after use here, because the caller needs it
 	//So, in order to avoid memory leaks, I've made it static and I free its memory before any consequent execution
 	//(I could just reuse the space but I don't necessarily know how big every chunk will be at this point)
+	static unsigned char * ciphertext;
 	free(ciphertext);
-	ciphertext = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+	ciphertext = malloc(data_len * sizeof(unsigned char));
 	if (ciphertext == NULL) return ciphertext;
 
+	//launching the cycle that will create the CTR keystream
 	#pragma omp parallel private (counter, counter_block)
 	{
 		counter = *initial_counter;		
@@ -100,9 +112,6 @@ unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsi
 			//initializing the counter block for this iteration 
 			derive_block_from_number(counter, &counter_block);
 
-			// #pragma omp critical
-			// block_logging(counter_block, "\n----------CTR(ENC)-------COUNTER BLOCK-----------", i);
-
 			//logging (pre-processing)
 			current_block++;
 			if (i % 10000 == 0)
@@ -110,36 +119,43 @@ unsigned char * operate_ctr_mode(block * b, const unsigned long bnum, const unsi
 				gettimeofday(&current_time, NULL);
 				show_progress_data(current_time, start_time, total_file_size, current_block);
 			}
-
-			#pragma omp critical
-			block_logging((unsigned char *)&b[i], "\n----------CTR-------BEFORE-----------", i);
 			
-			//applying the cipher on the counter block and incrementing the counter
-			process_block((unsigned char *)&counter_block, counter_block.left, counter_block.right, round_keys);
-
-			//xor between the ciphered counter block and the current block of plaintext/ciphertext
-			block_xor(&b[i], &b[i], &counter_block);
-			
-			//logging (post-processing)
-			#pragma omp critical
-			block_logging((unsigned char *) &b[i], "\n----------CTR-------AFTER-----------", i);
-
-			//storing the ciphered block in the ciphertext variable
-			for (int j=0; j<BLOCKSIZE; j++)	
-			{
-				ciphertext[(i*BLOCKSIZE)+j] = b[i].left[j];	
-			}
+			//applying the cipher on the counter block 
+			process_block(&keystream[i], counter_block.left, counter_block.right, round_keys);
 
 			//It's the last iteration, setting the starting counter for the next chunk
 			if (i == bnum - 1 ) next_initial_counter = counter + 1;
 		}	
 	}
 
-	//I'm using a second static variable to save the initial counter for the next chunk
+	//launching the cycle that will XOR the keystream and the plaintext to produce the ciphertext
+	#pragma omp parallel for
+	for (size_t i = 0; i < data_len; i++) 
+	{
+		ciphertext[i] = keystream[i] ^ plaintext[i];
+		
+		//If i+1 is a multiple of blocksize, it means we just finished XORing a whole block, we can print it
+		if (i > 0 && (i+1) % BLOCKSIZE == 0)
+		{
+			//The position where we start printing would be i - (b-1) with b=BLOCKSIZE, here's why:
+			//
+			//We're now at iteration i = b*k - 1, where k is a natural multiple of BLOCKSIZE, and we want the index we had at i = b * (k-1),
+			//which is exactly the last multiple of BLOCKSIZE before the current index and therefore the last used block index.
+			//
+			//Again, the current index is i = b*k - 1 because we enter this conditional one position before a multiple of b.
+			//If we subtract (b - 1) to the current index we get i = b*k-1-(b-1) = b*k-1-b+1 = b*k-b = b * (k-1)
+			block_logging(&keystream[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------keystream-----------", (i/BLOCKSIZE));
+			block_logging(&plaintext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------plaintext-----------", i/BLOCKSIZE);
+			block_logging(&ciphertext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------ciphertext-----------", i/BLOCKSIZE);
+		}
+    }
+
+	//I'm using a second variable to save the initial counter for the next chunk during the cycle
 	//Because if I used the one that I access during the parallel for, I would have interleaving issues:
 	//the value would be set by the thread handling the last iteration numerically, not chronologically
 	//and that means some threads might occasionally still be "left behind" processing earlier iterations
 	//with an incorrect value of initial_counter
+	//Here we copy it back to the static variable that will store it for the next chunk
 	*initial_counter = next_initial_counter;
 	return ciphertext;
 }

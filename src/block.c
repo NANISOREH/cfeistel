@@ -9,9 +9,8 @@
 #include "feistel.h"
 #include "opmodes.h"
 #include "omp.h"
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
-#include <openssl/obj_mac.h>
+#include "openssl/evp.h"
+#include "openssl/hmac.h"
 
 //Schedules the round keys by compressing (or expanding, if smaller) the input key into and 8 byte master key  
 //and then using it to derive one subkey for every round of the Feistel cipher
@@ -132,7 +131,7 @@ unsigned char * encrypt_blocks(unsigned char * data, unsigned long * chunk_size,
     else if (chosen == ecb)
     	return operate_ecb_mode(b, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode(b, bcount, round_keys, header[1]);
+    	return operate_ctr_mode(b, *chunk_size, round_keys, header[1]);
     else if (chosen == ofb)
     	return operate_ofb_mode(b, *chunk_size, round_keys, header[1]);
 
@@ -173,7 +172,7 @@ unsigned char * decrypt_blocks(unsigned char * data, unsigned long data_len, int
     else if (chosen == ecb)
     	return operate_ecb_mode((block *)data, bcount, round_keys);
     else if (chosen == ctr)
-    	return operate_ctr_mode((block *)data, bcount, round_keys, header[1]);
+    	return operate_ctr_mode((block *)data, data_len, round_keys, header[1]);
     else if (chosen == ofb)
     	return operate_ofb_mode((block *)data, data_len, round_keys, header[1]);
 

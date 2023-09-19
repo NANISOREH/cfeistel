@@ -315,7 +315,7 @@ bool is_stream_mode(enum mode chosen)
             return false;
             break;
         case ecb:
-            return false;;
+            return false;
             break;
         case ctr:
             return true;
