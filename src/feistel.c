@@ -10,22 +10,27 @@
 #include "feistel.h"
 
 //execution of the cipher for a single block
-void process_block(unsigned char * target, const unsigned char * left, const unsigned char * right, const unsigned char round_keys[NROUND][KEYSIZE]) 
+void process_block(unsigned char * target, unsigned char * left, unsigned char * right, const unsigned char round_keys[NROUND][KEYSIZE]) 
 {	
 	//buffer variable to temporarily store the left part of the block during the round execution
-	unsigned char left_copy[BLOCKSIZE/2];
+	unsigned char * left_copy;
+	left_copy = malloc(BLOCKSIZE/2);
 	memcpy(left_copy, left, BLOCKSIZE/2);
-	unsigned char right_copy[BLOCKSIZE/2];
+	
+	unsigned char * right_copy;
+	right_copy = malloc(BLOCKSIZE/2);
 	memcpy(right_copy, right, BLOCKSIZE/2);
-	unsigned char templeft[BLOCKSIZE/2];
+	
+	unsigned char * templeft;
+	templeft = malloc(BLOCKSIZE/2);
+	memcpy(templeft, left, BLOCKSIZE/2);
 
 	for (int i=0; i<NROUND; i++)	//execution of NROUND cipher rounds on the block
 	{
 		memcpy(templeft, left_copy, BLOCKSIZE/2);
-
 		memcpy(left_copy, right_copy, BLOCKSIZE/2);	//the right half in a round becomes the left half in the next round
 		sp_network(right_copy, round_keys[i]);	//f(right)
-		half_block_xor(right_copy, templeft, right_copy);	  //f(right) XOR left 
+		half_block_xor(right_copy, templeft, right_copy);	  //f(right) XOR left
 	}
 
 	//final inversion of left and right parts of the block after the last round
@@ -36,6 +41,10 @@ void process_block(unsigned char * target, const unsigned char * left, const uns
 	//copying to the target variable
 	memcpy(target, left_copy, BLOCKSIZE/2);
 	memcpy(target + BLOCKSIZE/2, right_copy, BLOCKSIZE/2);
+
+	free(left_copy);
+	free(right_copy);
+	free(templeft);
 }
 
 //"f" function of the feistel cipher. Contains a VERY basic SP network. 

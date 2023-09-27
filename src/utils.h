@@ -18,6 +18,7 @@ long unsigned create_nonce(block * nonce);
 void block_xor(block *result, const block *first, const block *second);
 //Data flow utils
 unsigned long remove_padding(unsigned char * result, unsigned long num_blocks, enum mode chosen, unsigned long total_file_size);
+void calculate_final_size(long unsigned * new_chunk_size, const long unsigned cur_size);
 int check_end_file(FILE *stream);
 int prepend_block(block * b, unsigned char * data);
 bool is_stream_mode(enum mode chosen);

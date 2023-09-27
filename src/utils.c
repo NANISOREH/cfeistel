@@ -314,6 +314,9 @@ bool is_stream_mode(enum mode chosen)
         case cbc:
             return false;
             break;
+        case pcbc:
+            return false;
+            break;
         case ecb:
             return false;
             break;
@@ -327,4 +330,27 @@ bool is_stream_mode(enum mode chosen)
             return false;
             break;
     }
+}
+
+void calculate_final_size(long unsigned * new_chunk_size, const long unsigned cur_size)
+{
+	if (cur_size % BLOCKSIZE == 0)
+	{
+		*new_chunk_size = cur_size + BLOCKSIZE;
+		if (*new_chunk_size > BUFSIZE) *new_chunk_size = BUFSIZE;
+		return;
+	}
+
+	*new_chunk_size = cur_size;
+
+	while (*new_chunk_size<BUFSIZE)
+	{
+		*new_chunk_size += 1;
+		if (*new_chunk_size % BLOCKSIZE == 0)
+		{
+			*new_chunk_size += BLOCKSIZE;
+			if (*new_chunk_size > BUFSIZE) *new_chunk_size = BUFSIZE;
+			break;
+		}
+	}
 }
