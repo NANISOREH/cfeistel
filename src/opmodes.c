@@ -48,7 +48,7 @@ void operate_ecb_mode(unsigned char * result, block * b, const unsigned long bnu
 
 //Executes the cipher in CTR mode; 
 //takes a block array, the length of the chunk, an IV and the round keys, returns processed data.
-void operate_ctr_mode(unsigned char * ciphertext, block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+void operate_ctr_mode(unsigned char * result, block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -57,7 +57,7 @@ void operate_ctr_mode(unsigned char * ciphertext, block * b, const unsigned long
 
 	block counter_block;
 	//Casting the block pointer to a char one because it's comfier for stream-like logic
-	unsigned char * plaintext = (unsigned char*)b;
+	unsigned char * data = (unsigned char*)b;
 
 	static unsigned long initial_counter;
 	long unsigned counter = 0;
@@ -108,11 +108,11 @@ void operate_ctr_mode(unsigned char * ciphertext, block * b, const unsigned long
 		}	
 	}
 
-	//launching the cycle that will XOR the keystream and the plaintext to produce the ciphertext
+	//launching the cycle that will XOR the keystream and the data to produce the ciphertext
 	#pragma omp parallel for
 	for (size_t i = 0; i < data_len; i++) 
 	{
-		ciphertext[i] = keystream[i] ^ plaintext[i];
+		result[i] = keystream[i] ^ data[i];
 		
 		//If i+1 is a multiple of blocksize, it means we just finished XORing a whole block, we can print it
 		if (i > 0 && (i+1) % BLOCKSIZE == 0)
@@ -125,8 +125,8 @@ void operate_ctr_mode(unsigned char * ciphertext, block * b, const unsigned long
 			//Again, the current index is i = b*k - 1 because we enter this conditional one position before a multiple of b.
 			//If we subtract (b - 1) to the current index we get i = b*k-1-(b-1) = b*k-1-b+1 = b*k-b = b * (k-1)
 			block_logging(&keystream[(i - (BLOCKSIZE - 1))], "\n----------CTR(ENC)------keystream-----------", (i/BLOCKSIZE));
-			block_logging(&plaintext[(i - (BLOCKSIZE - 1))], "\n----------CTR(ENC)------plaintext-----------", i/BLOCKSIZE);
-			block_logging(&ciphertext[(i - (BLOCKSIZE - 1))], "\n----------CTR(ENC)------ciphertext-----------", i/BLOCKSIZE);
+			block_logging(&data[(i - (BLOCKSIZE - 1))], "\n----------CTR(ENC)------plaintext-----------", i/BLOCKSIZE);
+			block_logging(&result[(i - (BLOCKSIZE - 1))], "\n----------CTR(ENC)------ciphertext-----------", i/BLOCKSIZE);
 		}
     }
 
@@ -144,7 +144,7 @@ void operate_ctr_mode(unsigned char * ciphertext, block * b, const unsigned long
 
 //Executes encryption in CBC mode; 
 //takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
-void encrypt_cbc_mode(unsigned char * ciphertext, block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+void encrypt_cbc_mode(unsigned char * ciphertext, block * plaintext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -171,10 +171,10 @@ void encrypt_cbc_mode(unsigned char * ciphertext, block * b, const unsigned long
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
-		block_logging((unsigned char *)&b[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
+		block_logging((unsigned char *)&plaintext[i], "\n----------CBC(ENC)-------BEFORE-----------", i);
 
 		//XORing the current block x with the ciphertext of the block x-1
-		block_xor(&xor_result, &b[i], &prev_ciphertext);
+		block_xor(&xor_result, &plaintext[i], &prev_ciphertext);
 		
 		//executing the encryption on the result of the previous xor and saving the result in prev_ciphertext for use in the next iteration
 		process_block(&ciphertext[i*BLOCKSIZE], xor_result.left, xor_result.right, round_keys);
@@ -190,7 +190,7 @@ void encrypt_cbc_mode(unsigned char * ciphertext, block * b, const unsigned long
 
 //Executes decryption in CBC mode; 
 //takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
-void decrypt_cbc_mode(unsigned char * plaintext, block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+void decrypt_cbc_mode(unsigned char * plaintext, block * ciphertext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -218,7 +218,7 @@ void decrypt_cbc_mode(unsigned char * plaintext, block * b, const unsigned long 
 	{	
 		//logging (pre-decryption)
 		#pragma omp critical
-		block_logging((unsigned char *)&b[i], "\n----------CBC(DEC)------BEFORE-----------", i);
+		block_logging((unsigned char *)&ciphertext[i], "\n----------CBC(DEC)------BEFORE-----------", i);
 		current_block++;
 		if (i % 10000 == 0)
 		{
@@ -227,12 +227,12 @@ void decrypt_cbc_mode(unsigned char * plaintext, block * b, const unsigned long 
 		}
 
 		//First thing, running feistel on the ciphertext block and storing the result in cur_ciphertext,...
-		process_block((unsigned char *)&cur_ciphertext, b[i].left, b[i].right, round_keys);
+		process_block((unsigned char *)&cur_ciphertext, ciphertext[i].left, ciphertext[i].right, round_keys);
 
 		if (i == 0) //...if it's the first block, you xor the result with the IV to get the first plaintext block...
 			block_xor((block *)&plaintext[(i*BLOCKSIZE)], &cur_ciphertext, &current_iv); 
 		else	//...whereas for every other ciphered block x, you xor the result with ciphertext[x-1] to get plaintext[i]
-			block_xor((block *)&plaintext[(i*BLOCKSIZE)], &cur_ciphertext, &b[(i)-1]); 			
+			block_xor((block *)&plaintext[(i*BLOCKSIZE)], &cur_ciphertext, &ciphertext[(i)-1]); 			
 
 		//logging (post-decryption)
 		#pragma omp critical
@@ -240,14 +240,14 @@ void decrypt_cbc_mode(unsigned char * plaintext, block * b, const unsigned long 
 	}
 
 	//The IV for the next chunk will be the ciphertext of the last decrypted block
-	memcpy(&current_iv, &b[(bnum)-1], sizeof(block));
+	memcpy(&current_iv, &ciphertext[(bnum)-1], sizeof(block));
 
 	first_chunk = false;
 }
 
 //Executes the cipher in OFB mode; 
 //takes a block array, the total size of the chunk, an IV and the round keys, returns processed data.
-void operate_ofb_mode (unsigned char * ciphertext, const block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+void operate_ofb_mode (unsigned char * result, block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -255,7 +255,7 @@ void operate_ofb_mode (unsigned char * ciphertext, const block * b, const unsign
 	unsigned char * keystream;
 	
 	//Casting the block pointer to a char one because it's comfier for stream-like logic
-	unsigned char * plaintext = (unsigned char*)b;
+	unsigned char * data = (unsigned char*)b;
 	unsigned long bnum;
 	
 	if (data_len % BLOCKSIZE == 0) 
@@ -300,7 +300,7 @@ void operate_ofb_mode (unsigned char * ciphertext, const block * b, const unsign
 	#pragma omp parallel for
 	for (size_t i = 0; i < data_len; i++) 
 	{
-		ciphertext[i] = keystream[i] ^ plaintext[i];
+		result[i] = keystream[i] ^ data[i];
 		
 		//If i+1 is a multiple of blocksize, it means we just finished XORing a whole block, we can print it
 		if (i > 0 && (i+1) % BLOCKSIZE == 0)
@@ -313,8 +313,8 @@ void operate_ofb_mode (unsigned char * ciphertext, const block * b, const unsign
 			//Again, the current index is i = b*k - 1 because we enter this conditional one position before a multiple of b.
 			//If we subtract (b - 1) to the current index we get i = b*k-1-(b-1) = b*k-1-b+1 = b*k-b = b * (k-1)
 			block_logging(&keystream[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------keystream-----------", (i/BLOCKSIZE));
-			block_logging(&plaintext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------plaintext-----------", i/BLOCKSIZE);
-			block_logging(&ciphertext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------ciphertext-----------", i/BLOCKSIZE);
+			block_logging(&data[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------plaintext-----------", i/BLOCKSIZE);
+			block_logging(&result[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------ciphertext-----------", i/BLOCKSIZE);
 		}
     }
 
@@ -325,7 +325,7 @@ void operate_ofb_mode (unsigned char * ciphertext, const block * b, const unsign
 
 //Executes encryption in PCBC mode; 
 //takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
-void encrypt_pcbc_mode(unsigned char * ciphertext, block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+void encrypt_pcbc_mode(unsigned char * ciphertext, block * plaintext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -357,15 +357,15 @@ void encrypt_pcbc_mode(unsigned char * ciphertext, block * b, const unsigned lon
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
-		block_logging((unsigned char *)&b[i], "\n----------PCBC(ENC)-------BEFORE-----------", i);
+		block_logging((unsigned char *)&plaintext[i], "\n----------PCBC(ENC)-------BEFORE-----------", i);
 
 		//Updating the prev_plaintext variable with the plaintext from last iteration
-		if (i>0) memcpy(prev_plaintext, &b[i-1], BLOCKSIZE);
+		if (i>0) memcpy(prev_plaintext, &plaintext[i-1], BLOCKSIZE);
 
 		//First we do plaintext[i-1] XOR ciphertext[i-1]...
 		if (i>0) block_xor(&xor_result, prev_plaintext, prev_ciphertext);
 		//...then we xor the result (or the IV if it's the first block) with the current (i) plaintext...
-		block_xor(&xor_result, &b[i], &xor_result);
+		block_xor(&xor_result, &plaintext[i], &xor_result);
 		//...and finally we obtain the current ciphertext by encrypting what we got from the last two XOR operations:
 		//c[i] = ENC(p[i] XOR (c[i-1] XOR p[i-1]))
 		//Note that in the first iteration, the IV substitutes the (c[i-1] XOR p[i-1]) result
@@ -376,6 +376,12 @@ void encrypt_pcbc_mode(unsigned char * ciphertext, block * b, const unsigned lon
 		
 		//Updating the prev_ciphertext variable with the last ciphertext block we obtained
 		memcpy(prev_ciphertext, &ciphertext[i*BLOCKSIZE], BLOCKSIZE);
+
+		//We're encrypting the last block, we store p[i] XOR c[i] to use as IV for the next chunk
+		if (i == bnum - 1)
+		{
+			block_xor(&xor_result, &plaintext[i], (block *)&ciphertext[i*BLOCKSIZE]);
+		}
 	}
 
 	first_chunk = false;
@@ -383,7 +389,7 @@ void encrypt_pcbc_mode(unsigned char * ciphertext, block * b, const unsigned lon
 
 //Executes decryption in PCBC mode; 
 //takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
-void decrypt_pcbc_mode(unsigned char * plaintext, block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+void decrypt_pcbc_mode(unsigned char * plaintext, block * ciphertext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
 	static int current_block = 0;
@@ -415,26 +421,32 @@ void decrypt_pcbc_mode(unsigned char * plaintext, block * b, const unsigned long
 			gettimeofday(&current_time, NULL);
 			show_progress_data(current_time, start_time, total_file_size, current_block);
 		}
-		block_logging((unsigned char *)&b[i], "\n----------PCBC(DEC)-------BEFORE-----------", i);
+		block_logging((unsigned char *)&ciphertext[i], "\n----------PCBC(DEC)-------BEFORE-----------", i);
 
 		//XORing the plaintext and the ciphertext from the last iteration
 		//and saving the current ciphertext to use it in the next iteration
 		if (i>0) block_xor(&xor_result, prev_plaintext, prev_ciphertext);
-		memcpy(prev_ciphertext, &b[i], BLOCKSIZE);
+		memcpy(prev_ciphertext, &ciphertext[i], BLOCKSIZE);
 		
 		//Decrypting the current ciphertext block in-place (we already saved the original value)
-		process_block((unsigned char *)&b[i], b[i].left, b[i].right, round_keys);
+		process_block((unsigned char *)&ciphertext[i], ciphertext[i].left, ciphertext[i].right, round_keys);
 		
 		//Obtaining the plaintext back by XORing the result of the decryption with the result of the previous XOR:
 		//p[i] = (c[i-1] XOR p[i-1]) XOR DEC(c[i]).
 		//Note that in the first iteration, the IV substitutes the (c[i-1] XOR p[i-1]) result
-		block_xor((block *)&plaintext[i*BLOCKSIZE], &b[i], &xor_result);
+		block_xor((block *)&plaintext[i*BLOCKSIZE], &ciphertext[i], &xor_result);
 
 		//logging (post-encryption)
 		block_logging(&plaintext[i*BLOCKSIZE], "\n----------PCBC(DEC)-------AFTER-----------", i);
 		
 		//Updating the prev_plaintext variable with the last plaintext block we obtained
 		memcpy(prev_plaintext, &plaintext[i*BLOCKSIZE], BLOCKSIZE);
+		
+		//We're decrypting the last block, we store p[i] XOR c[i] to use as IV for the next chunk
+		if (i == bnum - 1)
+		{
+			block_xor(&xor_result, prev_ciphertext, (block *)&plaintext[i*BLOCKSIZE]);
+		}	
 	}
 
 	first_chunk = false;

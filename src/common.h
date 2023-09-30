@@ -1,5 +1,4 @@
 #define BUFSIZE 104857600
-//#define BUFSIZE 64
 #define DEFAULT_MODE ctr
 #define DEFAULT_OP enc
 #define DEFAULT_OUT specified
