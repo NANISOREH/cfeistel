@@ -20,12 +20,14 @@ unsigned long total_file_size=0;
 struct timeval start_time;
 
 int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode * chosen, enum operation * to_do, enum outmode * output_mode);
+void handle_padded_chunk(unsigned char * result, unsigned char * data, FILE * read_file, FILE * write_file, unsigned long chunk_size,
+	enum mode chosen, enum operation to_do, const char * key, const block header[2], int nchunk);
 
 int main(int argc, char * argv[]) 
 {
 	//Variables that will be populated by user command selection
-	enum mode chosen = DEFAULT_MODE;
-	enum operation to_do = DEFAULT_OP;
+	enum mode opmode = DEFAULT_MODE;
+	enum operation op = DEFAULT_OP;
 	enum outmode output_mode = DEFAULT_OUT;
 	char * infile;
 	infile = calloc (3, sizeof(char));
@@ -42,7 +44,7 @@ int main(int argc, char * argv[])
 	unsigned char * result;
 	unsigned long num_blocks;
 	//nchunk will contain the number of chunks that have currently been processed
-	int nchunk=0;
+	int nchunk = 0;
 	//chunk_size stores the size of the current chunk of data
 	unsigned long chunk_size=0;
 	//padded_chunk_size stores the size of the current chunk of data, adjusted for padding and accounting
@@ -62,7 +64,7 @@ int main(int argc, char * argv[])
 		omp_set_num_threads(1);
 	#endif	
 
-	if (command_selection(argc, argv, key, infile, outfile, &chosen, &to_do, &output_mode) == -1) return -1;
+	if (command_selection(argc, argv, key, infile, outfile, &opmode, &op, &output_mode) == -1) return -1;
 
 	if (output_mode == replace) //Sets up the output filename for replace mode:
 	//at the end of the processing, the provided file will be removed and the new file will take its name
@@ -77,13 +79,13 @@ int main(int argc, char * argv[])
 	write_file = fopen(outfile, "wb"); //clears the file to avoid appending to an already written file
 	write_file = freopen(outfile, "ab", write_file);
 
-	if (read_file==NULL) 
+	if (read_file==NULL || write_file==NULL) 
 	{
-		exit_message(1, "Input file not found!");
+		exit_message(1, "Error in opening files!");
 		return -1;
 	}
 
-	if (to_do == enc) //We need to generate the header and prepend it to the ciphertext
+	if (op == enc) //We need to generate the header and prepend it to the ciphertext
 	{
 		create_nonce(&header[0]);
 		create_nonce(&header[1]);
@@ -99,7 +101,7 @@ int main(int argc, char * argv[])
 	fseek(read_file, 0, SEEK_END);
 	total_file_size = ftell(read_file);
 	rewind(read_file);
-	if (to_do == dec) //In decryption, we have to ignore the first two blocks (header)
+	if (op == dec) //In decryption, we have to ignore the first two blocks (header)
 	{
 		fseek(read_file, 2*BLOCKSIZE, SEEK_SET);
 		total_file_size -= 2*BLOCKSIZE;
@@ -108,115 +110,58 @@ int main(int argc, char * argv[])
 	gettimeofday(&start_time, NULL);
 
 	//This loop will continue reading from read_file, processing data in chunks of BUFSIZE bytes and writing them to write_file,
-	//until it reaches the last chunk of readable data. The standard way to understand when it's the last one is just checking if
-	//fread read less than BUFSIZE bytes
+	//until it reaches the last chunk of readable data
 	while (1)
-	{			
-		//Trying to read BUFSIZE characters, saving the number of read characters in chunk_size
+	{		
+		//Trying to read BUFSIZE characters, saving the number of read characters in chunk_size, allocating the space needed
 		data = malloc(BUFSIZE * sizeof(unsigned char));
-		chunk_size = fread(data, sizeof(char), BUFSIZE, read_file);
-		
-		//If we read exactly BLOCKSIZE bytes, then the current chunk only contains the accounting block for the previous one
-		//This only occurs when the actual data size falls within BLOCKSIZE bytes of a BUFSIZE multiple
-		//This does not apply to stream-like modes like OFB, because those need no padding and no accounting.
-		if (to_do == dec && nchunk > 0 && chunk_size == BLOCKSIZE && is_stream_mode(chosen) == false) acc_only_chunk = true;
+		chunk_size = fread(data, sizeof(unsigned char), BUFSIZE, read_file);
+		result = malloc(chunk_size * sizeof(unsigned char));
 
-		if (chunk_size < 0) //reading error
+		if (chunk_size == 0 || data == NULL || result == NULL)
 		{
-			exit_message(1, "Input file not readable!");
-			return -1;
-		}
-		else if 
-			(chunk_size < BUFSIZE) final_chunk_flag = 1;  //default case: if we read less than BUFSIZE bytes it's the last chunk of data
-		else if 
-			(check_end_file(read_file)) final_chunk_flag = 1;	 //borderline case: buffer is full but there's EOF after this chunk
-
-		//Modifying the chunk size in case there's padding and accounting to add, and allocating space for the output accordingly
-		if (to_do == enc && is_stream_mode(chosen) == false)
-		{
-			calculate_final_size(&padded_chunk_size, chunk_size);
-			
-			//Fringe case: we'll write an extra block in case data ended inside the last block of the chunk
-			//and we need the last chunk to exceptionally go one block over the BUFSIZE to keep the accounting block 
-			if (final_chunk_flag && chunk_size > BUFSIZE - BLOCKSIZE)
-			{
-				padded_chunk_size += BLOCKSIZE;
-			}
-			result = malloc(padded_chunk_size * sizeof(unsigned char));
-		}
-		else 
-		{
-			result = malloc(chunk_size * sizeof(unsigned char));
-		}
-		
-		//starting the correct operation and returning -1 in case there's an error
-		if (to_do == enc) 
-			encrypt_blocks(result, data, chunk_size, nchunk, key, header, chosen);
-		else if (to_do == dec) 
-			decrypt_blocks(result, data, chunk_size, nchunk, key, header, chosen);
-		
-		if (result == NULL)
-		{
-			fclose(write_file);
-			fclose(read_file);
-			free(data);
-			free(result);
+			exit_message(1, "Reading/memory error!");
 			return -1;
 		}
 
-		//incrementing the number of processed chunks
-		nchunk++;
+		if (is_stream_mode(opmode))
+		{
+			//starting the correct operation and returning -1 in case there's an error
+			if (op == enc) 
+				encrypt_blocks(result, data, chunk_size, nchunk, key, header, opmode);
+			else if (op == dec) 
+				decrypt_blocks(result, data, chunk_size, nchunk, key, header, opmode);
 
-		//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
-		//and if there's no size written in the last block, it means that the specified decryption key was invalid.
-		//This does not apply to stream-like modes like OFB, because those need no padding and no accounting.
-		if (to_do == dec && final_chunk_flag == 1 && is_stream_mode(chosen) == false)
-		{ 
-			//padding has not been removed yet in decryption
-			//so BLOCKSIZE should be a perfect divisor of chunk_size
-			num_blocks = chunk_size/BLOCKSIZE;
-
-			//Removing padding from this chunk
-			chunk_size = remove_padding(result, num_blocks, chosen, total_file_size);
-
-			//if the last chunk only contains an accounting block saying the chunk has 0 bytes, it means that the last chunk was
-			//completely full and feistel_decrypt didn't detect it as "last chunk". In this case we can just use BUFSIZE as size.
-			//In the same way, if chunk_size was set to -1 by remove_padding it means there was no accounting block, and that means
-			//that the input file's size was a perfect multiple of BUFSIZE
-			if (chunk_size == 0 || chunk_size == -1) chunk_size = BUFSIZE;
+			//Writing the result to file
+			fwrite(result, chunk_size, 1, write_file);
 		}
-
-		//Writing the result to file and freeing space
-		if (to_do == enc && !is_stream_mode(chosen))
-			fwrite(result, padded_chunk_size, 1, write_file);
 		else
-		 	fwrite(result, chunk_size, 1, write_file);
-
-		if (final_chunk_flag == 1) //it was the last chunk of data, we're done, closing files
 		{
-			//This is needed when we are processing a chunk that only contains an accounting block 
-			//In this case we can't directly remove the padding using the chunk size, because the chunk size we have is 
-			//relative to the previous block, so we have to do some maths and truncate the whole file at the correct point
-			if (acc_only_chunk && to_do == dec && !is_stream_mode(chosen))
-			{
-				fseek(write_file, 0, SEEK_SET);
-				ftruncate(fileno(write_file), chunk_size + ((nchunk - 2) * BUFSIZE));
-			}
-
-			fclose(read_file);
-			fclose(write_file);
-			if (output_mode == replace) 
-			{
-				remove(infile);
-				rename(outfile, infile);
-			}			
-
-			break;
+			//Things are a bit more convoluted in case we're using a mode of operation that needs padding and an accounting block
+			//so the whole charade deserved its own function to improve readability
+			handle_padded_chunk(result, data, read_file, write_file, chunk_size, opmode, op, key, header, nchunk);
 		}
 
 		free(result);
 		free(data);
+
+		nchunk++;
+		
+		//if we read less than BUFSIZE bytes or there's EOF after the last full block
+		//it means that we processed the last chunk of data
+		if (chunk_size < BUFSIZE || check_end_file(read_file)) 
+			break;
 	}
+
+	//In-place processing: the output file will take the place of the input file
+	if (output_mode == replace) 
+	{
+		remove(infile);
+		rename(outfile, infile);
+	}
+
+	fclose(read_file);
+	fclose(write_file);
 
 	//Printing some stats
 	struct timeval current_time;
@@ -228,13 +173,90 @@ int main(int argc, char * argv[])
 	snprintf(speed, sizeof(speed), "Avg processing speed: %.2f MB/s", estimate_speed(current_time, start_time, total_file_size/BLOCKSIZE));
 	snprintf(time, sizeof(time), "Time elapsed: %.2f s", time_diff);
 	snprintf(filesize, sizeof(filesize), "\nTotal file size: %.2f MB", (float)total_file_size / (1000.0 * 1000.0));
-	if (to_do == enc) exit_message(4, "Encryption complete!\n", filesize, speed, time);
+	if (op == enc) exit_message(4, "Encryption complete!\n", filesize, speed, time);
 	else exit_message(4, "Decryption complete!\n", filesize, speed, time);
 
 	return 0;
 }
 
-int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode * chosen, enum operation * to_do, enum outmode * output_mode)
+//This function handles the processing of a single chunk in the case of purely block-oriented modes of operation
+//It takes all necessary data and populates result after the processing
+void handle_padded_chunk(unsigned char * result, unsigned char * data, FILE * read_file, FILE * write_file, unsigned long chunk_size,
+	enum mode opmode, enum operation op, const char * key, const block header[2], int nchunk)
+{
+	unsigned long padded_chunk_size = 0;
+	bool acc_only_chunk = false;
+	bool final_chunk = false;
+	int num_blocks;
+
+	//If we read exactly BLOCKSIZE bytes, then the current chunk only contains the accounting block for the previous one
+	//This only occurs when the actual data size falls within BLOCKSIZE bytes of a BUFSIZE multiple
+	if (op == dec && nchunk > 0 && chunk_size == BLOCKSIZE) acc_only_chunk = true;
+
+	//if we read less than BUFSIZE bytes or there's EOF after the last full block
+	//it means that we are processing the last chunk of data
+	if (chunk_size < BUFSIZE || check_end_file(read_file)) final_chunk = true;
+
+	//Modifying the chunk size in case there's padding and accounting to add, and allocating space for the output accordingly
+	if (op == enc)
+	{
+		calculate_final_size(&padded_chunk_size, chunk_size);
+		
+		//Fringe case: we'll write an extra block in case data ended inside the last block of the chunk
+		//and we need the last chunk to exceptionally go one block over the BUFSIZE to keep the accounting block 
+		if (final_chunk && chunk_size > BUFSIZE - BLOCKSIZE)
+		{
+			padded_chunk_size += BLOCKSIZE;
+		}
+		result = realloc(result, padded_chunk_size * sizeof(unsigned char));
+	}
+	
+	//starting the correct operation and returning -1 in case there's an error
+	if (op == enc) 
+		encrypt_blocks(result, data, chunk_size, nchunk, key, header, opmode);
+	else if (op == dec) 
+		decrypt_blocks(result, data, chunk_size, nchunk, key, header, opmode);
+
+	//In case we're decrypting the last chunk we use the size written in the last block (returned by remove_padding) to determine how much text to write,
+	//and if there's no size written in the last block, it means that the specified decryption key was invalid.
+	if (op == dec && final_chunk)
+	{ 
+		//padding has not been removed yet in decryption
+		//so BLOCKSIZE should be a perfect divisor of chunk_size
+		num_blocks = chunk_size/BLOCKSIZE;
+
+		//Removing padding from this chunk
+		chunk_size = remove_padding(result, num_blocks, opmode, total_file_size);
+
+		//if the last chunk only contains an accounting block saying the chunk has 0 bytes, it means that the last chunk was
+		//completely full and feistel_decrypt didn't detect it as "last chunk". In this case we can just use BUFSIZE as size.
+		//In the same way, if chunk_size was set to -1 by remove_padding it means there was no accounting block, and that means
+		//that the input file's size was a perfect multiple of BUFSIZE
+		if (chunk_size == 0 || chunk_size == -1) chunk_size = BUFSIZE;
+	}
+
+	//Writing the result to file
+	if (op == enc)
+		fwrite(result, padded_chunk_size, 1, write_file);
+	else
+		fwrite(result, chunk_size, 1, write_file);
+
+	if (final_chunk) //it was the last chunk of data, we're done
+	{
+		//This is needed when we are processing a chunk that only contains an accounting block 
+		//In this case we can't directly remove the padding using the chunk size, because the chunk size we have is 
+		//relative to the previous block, so we have to do some maths and truncate the whole file at the correct point
+		if (acc_only_chunk && op == dec)
+		{
+			fseek(write_file, 0, SEEK_SET);
+			ftruncate(fileno(write_file), chunk_size + ((nchunk - 2) * BUFSIZE));
+		}
+	}
+
+	return;
+}
+
+int command_selection(int argc, char *argv[], char * key, char * infile, char * outfile, enum mode * opmode, enum operation * op, enum outmode * output_mode)
 {
     int opt;
 
@@ -267,17 +289,17 @@ int command_selection(int argc, char *argv[], char * key, char * infile, char * 
                 break;
             case 'm':
                 if (strcmp(optarg, "ecb") == 0)
-                    *chosen = ecb;
+                    *opmode = ecb;
                 else if (strcmp(optarg, "cbc") == 0)
-                    *chosen = cbc;
+                    *opmode = cbc;
                 else if (strcmp(optarg, "ctr") == 0)
-                    *chosen = ctr;
+                    *opmode = ctr;
                 else if (strcmp(optarg, "ofb") == 0)
-                    *chosen = ofb;
+                    *opmode = ofb;
                 else if (strcmp(optarg, "pcbc") == 0)
-                    *chosen = pcbc;
+                    *opmode = pcbc;
                 else if (strcmp(optarg, "cfb") == 0)
-                    *chosen = cfb;
+                    *opmode = cfb;
                 else 
 				{
                     fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");
@@ -295,9 +317,9 @@ int command_selection(int argc, char *argv[], char * key, char * infile, char * 
     if (optind < argc) 
 	{
         if (strcmp(argv[optind], "enc") == 0)
-            *to_do = enc;
+            *op = enc;
         else if (strcmp(argv[optind], "dec") == 0)
-            *to_do = dec;
+            *op = dec;
         else 
 		{
             fprintf(stderr, "Invalid operation: %s\n", argv[optind]);

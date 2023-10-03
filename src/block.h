@@ -1,2 +1,2 @@
-void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long data_len, int nchunk, const char * key, const block header[2], enum mode chosen);
-void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned long chunk_size, int nchunk, const char * key, const block header[2], enum mode chosen);
+void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long data_len, int nchunk, const char * key, const block header[2], enum mode opmode);
+void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned long chunk_size, int nchunk, const char * key, const block header[2], enum mode opmode);

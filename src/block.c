@@ -58,7 +58,7 @@ void schedule_key(unsigned char round_keys[NROUND][KEYSIZE], const char * key, c
 //the header block array and the chosen operation mode enum value. 
 //Returns the result of the encryption as a pointer to unsigned char, or NULL if an error is encountered.
 //In case it has to add padding and/or an accounting block, it uses the chunk_size pointer to update the chunk size
-void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned long chunk_size, int nchunk, const char * key, const block header[2], enum mode chosen)
+void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned long chunk_size, int nchunk, const char * key, const block header[2], enum mode opmode)
 {	
 	char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -89,7 +89,7 @@ void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned
     //It's a pretty naive padding scheme, but it works on any mode of operation so it simplifies coding.
     //I just 0-pad the last block if data length is not multiple of blocksize and use a size accounting block
     //to know how much of the last block is 0-padding to properly decrypt.
-    if (chunk_size<BUFSIZE && is_stream_mode(chosen) == false)	
+    if (chunk_size<BUFSIZE && is_stream_mode(opmode) == false)	
     {	
 	    if (remainder>0)	//forming the last padded block, if there's leftover data
 	    {
@@ -123,7 +123,7 @@ void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned
 	   	}
 	}
 
-	switch (chosen) 
+	switch (opmode) 
 	{
         case cbc:
             encrypt_cbc_mode(result, b, bcount, round_keys, header[1]);
@@ -152,7 +152,7 @@ void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned
 //Receives and organizes input data, takes the length of the chunk, the number of the current chunk, the input key,
 //the header block array and the chosen operation mode enum value. 
 //Returns the result of the decryption as a pointer to unsigned char, or NULL if an error is encountered.
-void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long data_len, int nchunk, const char * key, const block header[2], enum mode chosen)
+void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long data_len, int nchunk, const char * key, const block header[2], enum mode opmode)
 {
 	unsigned char buffer[BLOCKSIZE];
 	unsigned char round_keys[NROUND][KEYSIZE];
@@ -162,7 +162,7 @@ void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long 
 
 	//scheduling the round keys starting from the master key given
 	schedule_key(round_keys, key, (unsigned char *)&header[0]);	//see the function schedule_key for info
-	if (is_stream_mode(chosen) == false && chosen != cfb) //round keys sequence has to be inverted for decryption, except for stream-like modes
+	if (!is_stream_mode(opmode)) //round keys sequence has to be inverted for decryption, except for stream-like modes
 	{
 		memcpy(temp, round_keys, NROUND * KEYSIZE);
 		int j=NROUND-1;
@@ -176,7 +176,7 @@ void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long 
 
 	bcount = (data_len * sizeof(char)) / BLOCKSIZE;
 
-	switch (chosen) 
+	switch (opmode) 
 	{
         case cbc:
             decrypt_cbc_mode(result, (block *)data, bcount, round_keys, header[1]);
