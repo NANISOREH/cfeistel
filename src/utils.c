@@ -314,6 +314,9 @@ bool is_stream_mode(enum mode chosen)
         case cbc:
             return false;
             break;
+        case cfb:
+            return true;
+            break;
         case pcbc:
             return false;
             break;

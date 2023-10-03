@@ -5,3 +5,5 @@ void encrypt_cbc_mode(unsigned char * ciphertext, block * plaintext, const unsig
 void decrypt_cbc_mode(unsigned char * plaintext, block * ciphertext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv);
 void encrypt_pcbc_mode(unsigned char * ciphertext, block * plaintext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv);
 void decrypt_pcbc_mode(unsigned char * plaintext, block * ciphertext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv);
+void encrypt_cfb_mode(unsigned char * ciphertext, block * plaintext, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv);
+void decrypt_cfb_mode(unsigned char * plaintext, block * ciphertext, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv);

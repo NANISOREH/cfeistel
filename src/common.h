@@ -7,7 +7,7 @@
 #define NROUND 10
 
 enum operation{enc, dec};
-enum mode{cbc, ecb, ctr, ofb, pcbc};
+enum mode{cbc, ecb, ctr, ofb, pcbc, cfb};
 enum outmode{specified, replace};
 
 //this structure represents the state of a block throught the rounds

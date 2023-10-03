@@ -17,7 +17,7 @@
 extern long unsigned total_file_size;
 extern struct timeval start_time;
 
-//Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys.
+//Executes the cipher in ECB mode; takes a block array, the total number of blocks and the round keys, populates result.
 void operate_ecb_mode(unsigned char * result, block * b, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE])
 {
 	struct timeval current_time;
@@ -47,7 +47,7 @@ void operate_ecb_mode(unsigned char * result, block * b, const unsigned long bnu
 }
 
 //Executes the cipher in CTR mode; 
-//takes a block array, the length of the chunk, an IV and the round keys, returns processed data.
+//takes a block array, the length of the chunk, an IV and the round keys, returns processed data by populating result.
 void operate_ctr_mode(unsigned char * result, block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
@@ -143,7 +143,7 @@ void operate_ctr_mode(unsigned char * result, block * b, const unsigned long dat
 }
 
 //Executes encryption in CBC mode; 
-//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data by populating ciphertext.
 void encrypt_cbc_mode(unsigned char * ciphertext, block * plaintext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
@@ -185,11 +185,10 @@ void encrypt_cbc_mode(unsigned char * ciphertext, block * plaintext, const unsig
 	}
 
 	first_chunk = false;
-
 }
 
 //Executes decryption in CBC mode; 
-//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data by populating plaintext.
 void decrypt_cbc_mode(unsigned char * plaintext, block * ciphertext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
@@ -246,7 +245,7 @@ void decrypt_cbc_mode(unsigned char * plaintext, block * ciphertext, const unsig
 }
 
 //Executes the cipher in OFB mode; 
-//takes a block array, the total size of the chunk, an IV and the round keys, returns processed data.
+//takes a block array, the total size of the chunk, an IV and the round keys, returns processed data by populating result.
 void operate_ofb_mode (unsigned char * result, block * b, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
@@ -324,7 +323,7 @@ void operate_ofb_mode (unsigned char * result, block * b, const unsigned long da
 }
 
 //Executes encryption in PCBC mode; 
-//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data by populating ciphertext.
 void encrypt_pcbc_mode(unsigned char * ciphertext, block * plaintext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
@@ -388,7 +387,7 @@ void encrypt_pcbc_mode(unsigned char * ciphertext, block * plaintext, const unsi
 }
 
 //Executes decryption in PCBC mode; 
-//takes a block array, the total number of blocks, an IV and the round keys, returns processed data.
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data by populating plaintext.
 void decrypt_pcbc_mode(unsigned char * plaintext, block * ciphertext, const unsigned long bnum, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
 {
 	struct timeval current_time;
@@ -448,6 +447,160 @@ void decrypt_pcbc_mode(unsigned char * plaintext, block * ciphertext, const unsi
 			block_xor(&xor_result, prev_ciphertext, (block *)&plaintext[i*BLOCKSIZE]);
 		}	
 	}
+
+	first_chunk = false;
+}
+
+//Executes encryption in CFB full-block mode; 
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data by populating ciphertext.
+void encrypt_cfb_mode(unsigned char * ciphertext, block * plaintext, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+{
+	struct timeval current_time;
+	static int current_block = 0;
+	static bool first_chunk = true;
+
+	unsigned char * stream_plaintext = (unsigned char *) plaintext;
+
+	//Copying the IV block to a local variable only if we're operating on the first chunk
+	static block prev_ciphertext;
+	if (first_chunk == true)
+	{
+		memcpy(&prev_ciphertext, &iv, BLOCKSIZE);
+	}
+
+	int bnum = 0;
+	if (data_len % BLOCKSIZE == 0) 
+		bnum = data_len/BLOCKSIZE;
+	else 
+		//if data_len is not a perfect multiple of blocksize we need to count an extra block:
+		//otherwise we wouldn't have the keystream available for the partial block at the end
+	 	bnum = data_len/BLOCKSIZE + 1;
+
+	unsigned char * keystream;
+	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+
+	block_logging((unsigned char *)&prev_ciphertext, "\n----------CFB(ENC)-------IV-----------", 0);
+
+	//launching the feistel algorithm on every block
+	for (unsigned long i=0; i<bnum; ++i) 
+	{
+		//logging (pre-encryption)
+		current_block++;
+		if (i % 10000 == 0)
+		{
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time, start_time, total_file_size, current_block);
+		}
+		block_logging((unsigned char *)&plaintext[i], "\n----------CFB(ENC)-------BEFORE-----------", i);
+
+		//Encrypting the previous ciphertext (or the IV if it's the first block) to get a block's worth of keystream
+		process_block(&keystream[i*BLOCKSIZE], prev_ciphertext.left, prev_ciphertext.right, round_keys);
+
+		//Checking if the last block is complete or not
+		//In case it's not, we need to do stop with block-by-block logic one iteration early
+		//and XOR the rest of the keystream with the rest of the plaintext outside the cycle
+		if ((i == bnum - 1) && data_len % BLOCKSIZE != 0) break;
+
+		//XORing the result of the encryption with the plaintext to get this iteration's ciphertext
+		block_xor((block *)&ciphertext[i*BLOCKSIZE], (block *)&keystream[i*BLOCKSIZE], &plaintext[i]);
+		//Backing up this iteration's ciphertext to use in next iteration's processing
+		memcpy(&prev_ciphertext, &ciphertext[i*BLOCKSIZE], BLOCKSIZE);
+
+		//logging (post-encryption)
+		block_logging(&ciphertext[i*BLOCKSIZE], "\n----------CFB(ENC)-------AFTER-----------", i);
+	}
+
+	//We XOR the "leftover" keystream and plaintext
+	if (data_len % BLOCKSIZE != 0)
+	{
+		for (unsigned long i=(bnum-1)*BLOCKSIZE; i<data_len; i++)
+		{
+			ciphertext[i] = keystream[i] ^ stream_plaintext[i];
+		}
+	} 
+
+	free(keystream);
+	first_chunk = false;
+}
+
+//Executes decryption in CFB full-block mode; 
+//takes a block array, the total number of blocks, an IV and the round keys, returns processed data by populating plaintext.
+void decrypt_cfb_mode(unsigned char * plaintext, block * ciphertext, const unsigned long data_len, const unsigned char round_keys[NROUND][KEYSIZE], const block iv)
+{
+	struct timeval current_time;
+	static int current_block = 0;
+
+	static bool first_chunk = true;
+	unsigned char * stream_ciphertext = (unsigned char *) ciphertext;
+	
+	//Copying the IV block to a local variable only if we're operating on the first chunk
+	//In later chunks, current_iv will hold the last keystream block of the previous chunk 
+	static block cur_iv;
+	if (first_chunk == true)
+	{
+		memcpy(&cur_iv, &iv, BLOCKSIZE);
+	}
+
+	int bnum = 0;
+	if (data_len % BLOCKSIZE == 0) 
+		bnum = data_len/BLOCKSIZE;
+	else 
+		//if data_len is not a perfect multiple of blocksize we need to count an extra block:
+		//otherwise we wouldn't have the keystream available for the partial block at the end
+	 	bnum = data_len/BLOCKSIZE + 1;
+
+	unsigned char * keystream;
+	keystream = malloc(BLOCKSIZE * bnum * sizeof(unsigned char));
+
+	block_logging((unsigned char *)&cur_iv, "\n----------CFB(DEC)-------IV-----------", 0);
+
+	//launching the feistel algorithm on every block, by making the index jump by increments of BLOCKSIZE
+	#pragma omp parallel for
+	for (unsigned long i=0; i<bnum; ++i) 
+	{	
+		//logging (pre-decryption)
+		#pragma omp critical
+		block_logging((unsigned char *)&ciphertext[i], "\n----------CFB(DEC)------BEFORE(keystream)-----------", i);
+		current_block++;
+		if (i % 10000 == 0)
+		{
+			gettimeofday(&current_time, NULL);
+			show_progress_data(current_time, start_time, total_file_size, current_block);
+		}
+
+		if (i==0) //Decrypting the IV to obtain a block worth of keystream
+			process_block(&keystream[i*BLOCKSIZE], (unsigned char *)&cur_iv.left, (unsigned char *)&cur_iv.right, round_keys);
+		else //Decrypting c[i-1] to obtain the block to xor with c[i-1] to obtain p[i]
+		 	process_block(&keystream[i*BLOCKSIZE], (unsigned char *)&ciphertext[i-1].left, (unsigned char *)&ciphertext[i-1].right, round_keys);;
+
+		//logging (post-decryption)
+		#pragma omp critical
+		block_logging(&keystream[i*BLOCKSIZE], "\n----------CFB(DEC)-------AFTER(keystream)-----------", i);
+	}
+
+	//launching the cycle that will XOR the keystream and the plaintext to produce the ciphertext
+	#pragma omp parallel for
+	for (size_t i = 0; i < data_len; i++) 
+	{
+		plaintext[i] = keystream[i] ^ stream_ciphertext[i];
+		
+		//If i+1 is a multiple of blocksize, it means we just finished XORing a whole block, we can print it
+		if (i > 0 && (i+1) % BLOCKSIZE == 0)
+		{
+			//The position where we start printing would be i - (b-1) with b=BLOCKSIZE, here's why:
+			//
+			//We're now at iteration i = b*k - 1, where k is a natural multiple of BLOCKSIZE, and we want the index we had at i = b * (k-1),
+			//which is exactly the last multiple of BLOCKSIZE before the current index and therefore the last used block index.
+			//
+			//Again, the current index is i = b*k - 1 because we enter this conditional one position before a multiple of b.
+			//If we subtract (b - 1) to the current index we get i = b*k-1-(b-1) = b*k-1-b+1 = b*k-b = b * (k-1)
+			block_logging(&stream_ciphertext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------ciphertext-----------", i/BLOCKSIZE);
+			block_logging(&plaintext[(i - (BLOCKSIZE - 1))], "\n----------OFB(ENC)------plaintext-----------", i/BLOCKSIZE);
+		}
+    }
+
+	//We'll be using the last block of ciphertext as IV for the next chunk
+	memcpy(&cur_iv, &ciphertext[bnum - 1], BLOCKSIZE);
 
 	first_chunk = false;
 }

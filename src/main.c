@@ -276,6 +276,8 @@ int command_selection(int argc, char *argv[], char * key, char * infile, char * 
                     *chosen = ofb;
                 else if (strcmp(optarg, "pcbc") == 0)
                     *chosen = pcbc;
+                else if (strcmp(optarg, "cfb") == 0)
+                    *chosen = cfb;
                 else 
 				{
                     fprintf(stderr, "\nEnter a valid mode of operation (ecb/cbc/ctr)\n");

@@ -12,15 +12,13 @@
 //execution of the cipher for a single block
 void process_block(unsigned char * target, unsigned char * left, unsigned char * right, const unsigned char round_keys[NROUND][KEYSIZE]) 
 {	
-	//buffer variable to temporarily store the left part of the block during the round execution
+	//buffer variables to temporarily store the left part of the block during the round execution
 	unsigned char * left_copy;
 	left_copy = malloc(BLOCKSIZE/2);
 	memcpy(left_copy, left, BLOCKSIZE/2);
-	
 	unsigned char * right_copy;
 	right_copy = malloc(BLOCKSIZE/2);
 	memcpy(right_copy, right, BLOCKSIZE/2);
-	
 	unsigned char * templeft;
 	templeft = malloc(BLOCKSIZE/2);
 	memcpy(templeft, left, BLOCKSIZE/2);

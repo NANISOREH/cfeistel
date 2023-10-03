@@ -128,6 +128,9 @@ void encrypt_blocks(unsigned char * result, unsigned char * data, const unsigned
         case cbc:
             encrypt_cbc_mode(result, b, bcount, round_keys, header[1]);
             break;
+        case cfb:
+            encrypt_cfb_mode(result, b, chunk_size, round_keys, header[1]);
+            break;
         case pcbc:
             encrypt_pcbc_mode(result, b, bcount, round_keys, header[1]);
             break;
@@ -159,7 +162,7 @@ void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long 
 
 	//scheduling the round keys starting from the master key given
 	schedule_key(round_keys, key, (unsigned char *)&header[0]);	//see the function schedule_key for info
-	if (is_stream_mode(chosen) == false) //round keys sequence has to be inverted for decryption, except for stream-like modes
+	if (is_stream_mode(chosen) == false && chosen != cfb) //round keys sequence has to be inverted for decryption, except for stream-like modes
 	{
 		memcpy(temp, round_keys, NROUND * KEYSIZE);
 		int j=NROUND-1;
@@ -177,6 +180,9 @@ void decrypt_blocks(unsigned char * result, unsigned char * data, unsigned long 
 	{
         case cbc:
             decrypt_cbc_mode(result, (block *)data, bcount, round_keys, header[1]);
+            break;
+        case cfb:
+            decrypt_cfb_mode(result, (block *)data, data_len, round_keys, header[1]);
             break;
         case pcbc:
             decrypt_pcbc_mode(result, (block *)data, bcount, round_keys, header[1]);
